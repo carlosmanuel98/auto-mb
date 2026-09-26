@@ -15,19 +15,25 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     lastFollowDistance: Number.POSITIVE_INFINITY,
     lastFollowProgressAt: 0,
     lastFollowStallAt: 0,
+    lastKiteMoveAt: 0,
+    lastKiteDestinationKey: null,
     skippedTargetIds: new Map(),
   };
 
   const storedConfig = bot.storage.get(configStorageKey, {}) || {};
   const config = Object.assign(
     {
-      tickMs: 500,
+      tickMs: 250,
       targetHotbarSlot: 3,
       runeHotbarSlot: null,
-      targetCooldownMs: 1200,
+      targetCooldownMs: 600,
       runeCooldownMs: 1200,
       maxTargetDistance: 8,
       meleeMode: true,
+      combatMovement: "auto",
+      kiteMinDistance: 3,
+      kiteMaxDistance: 5,
+      kiteMoveCooldownMs: 350,
       enabled: false,
     },
     storedConfig
@@ -35,6 +41,10 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   if (config.targetHotbarSlot == null && storedConfig.hotbarSlot != null) {
     config.targetHotbarSlot = storedConfig.hotbarSlot;
   }
+  config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
+  config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
+  config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
+  config.kiteMoveCooldownMs = Math.max(100, Number(config.kiteMoveCooldownMs) || 350);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -52,6 +62,14 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     return normalized;
+  }
+
+  function getCombatMovement() {
+    if (config.combatMovement === "kite") {
+      return "kite";
+    }
+
+    return config.meleeMode === false ? "hold" : "follow";
   }
 
   function getNearbyMonsters() {
@@ -155,6 +173,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     state.combatStartedAt = 0;
     state.lastChaseDestinationKey = null;
     resetFollowProgress();
+    state.lastKiteDestinationKey = null;
   }
 
   function clearCurrentFollowTarget() {
@@ -208,7 +227,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       return false;
     }
 
-    return !!getEngagedTarget();
+    return !!getEngagedTarget() || getMonsterCandidates().length > 0;
   }
 
   function syncCombatState(now = Date.now()) {
@@ -223,27 +242,45 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
 
   function getEngagedTarget() {
     const currentTarget = getCurrentTarget();
+    if (state.engagedTargetId != null) {
+      if (isSameCreature(currentTarget, { id: state.engagedTargetId })) {
+        return currentTarget;
+      }
+
+      const lockedTarget = findNearbyMonsterById(state.engagedTargetId);
+      if (lockedTarget) {
+        return lockedTarget;
+      }
+
+      const followTarget = getCurrentFollowTarget();
+      if (followTarget && followTarget.id === state.engagedTargetId) {
+        return findNearbyMonster(followTarget) || followTarget;
+      }
+
+      clearEngagedTarget();
+    }
+
     if (currentTarget) {
       state.engagedTargetId = currentTarget.id;
       return currentTarget;
     }
 
-    if (state.engagedTargetId == null) {
-      return null;
-    }
-
     const followTarget = getCurrentFollowTarget();
-    if (followTarget && followTarget.id === state.engagedTargetId) {
+    if (followTarget) {
+      state.engagedTargetId = followTarget.id;
       return findNearbyMonster(followTarget) || followTarget;
     }
 
-    const nearbyTarget = findNearbyMonsterById(state.engagedTargetId);
-    if (nearbyTarget) {
-      return nearbyTarget;
+    return null;
+  }
+
+  function syncLockedTarget() {
+    const engagedTarget = getEngagedTarget();
+    if (!engagedTarget || isSameCreature(getCurrentTarget(), engagedTarget)) {
+      return false;
     }
 
-    clearEngagedTarget();
-    return null;
+    return setCurrentTarget(engagedTarget);
   }
 
   function setCurrentTarget(target) {
@@ -317,7 +354,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
 
     const playerPosition = normalizePosition(bot.getPlayerPosition());
     return getNearbyMonsters()
-      .filter((monster) => !isTargetSkipped(monster, now))
+      .filter((monster) => !isTargetSkipped(monster, now) && !shouldGiveUpTarget(monster))
       .sort((left, right) => {
         const leftDistance = getTileDistance(playerPosition, normalizePosition(left?.getPosition?.() || left?.__position));
         const rightDistance = getTileDistance(playerPosition, normalizePosition(right?.getPosition?.() || right?.__position));
@@ -431,7 +468,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   }
 
   function syncMeleeChase(now = Date.now()) {
-    if (!config.meleeMode) {
+    if (getCombatMovement() !== "follow") {
       return false;
     }
 
@@ -482,15 +519,18 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       state.lastFollowStallAt = 0;
     }
 
+    const wasAlreadyFollowing = isSameCreature(getCurrentFollowTarget(), target);
     const followed = setCurrentFollowTarget(target);
     if (followed) {
       state.lastChaseAt = now;
       state.lastChaseDestinationKey = getPositionKey(adjacentPosition);
-      bot.log("following auto attack target", {
-        id: target.id,
-        name: target.name || "Mob",
-        followTargetId: target.id,
-      });
+      if (!wasAlreadyFollowing) {
+        bot.log("following auto attack target", {
+          id: target.id,
+          name: target.name || "Mob",
+          followTargetId: target.id,
+        });
+      }
     }
 
     if (state.lastFollowDistance <= currentDistance) {
@@ -504,6 +544,110 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     return followed;
   }
 
+  function findReachableKitePosition(targetPosition, playerPosition, currentDistance) {
+    const desiredDistance = Math.max(
+      1,
+      Math.trunc((Number(config.kiteMinDistance) + Number(config.kiteMaxDistance)) / 2) || 4
+    );
+    const pathfinder = window.gameClient?.world?.pathfinder;
+    const startTile = getTileFromPosition(playerPosition);
+    if (!pathfinder || !startTile || typeof pathfinder.search !== "function") {
+      return null;
+    }
+
+    const candidates = [];
+    for (let xOffset = -desiredDistance; xOffset <= desiredDistance; xOffset += 1) {
+      for (let yOffset = -desiredDistance; yOffset <= desiredDistance; yOffset += 1) {
+        if (Math.max(Math.abs(xOffset), Math.abs(yOffset)) !== desiredDistance) {
+          continue;
+        }
+        candidates.push({
+          x: targetPosition.x + xOffset,
+          y: targetPosition.y + yOffset,
+          z: targetPosition.z,
+        });
+      }
+    }
+
+    candidates.sort((left, right) => {
+      const leftDistance = getTileDistance(playerPosition, left);
+      const rightDistance = getTileDistance(playerPosition, right);
+      return currentDistance <= Number(config.kiteMinDistance)
+        ? rightDistance - leftDistance
+        : leftDistance - rightDistance;
+    });
+
+    for (const candidate of candidates) {
+      const tile = getTileFromPosition(candidate);
+      if (!tile?.isWalkable?.()) {
+        continue;
+      }
+
+      try {
+        const path = pathfinder.search(startTile, tile);
+        if (Array.isArray(path) && path.length > 0) {
+          return candidate;
+        }
+      } catch (error) {
+        bot.log("auto attack kite reachability check failed", error?.message || error);
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  function syncKiteMovement(now = Date.now()) {
+    if (getCombatMovement() !== "kite") {
+      return false;
+    }
+
+    const target = getEngagedTarget();
+    const playerPosition = normalizePosition(bot.getPlayerPosition());
+    const targetPosition = normalizePosition(target?.getPosition?.() || target?.__position);
+    if (!target || !playerPosition || !targetPosition || playerPosition.z !== targetPosition.z) {
+      return false;
+    }
+
+    const currentDistance = getTileDistance(playerPosition, targetPosition);
+    const minDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
+    const maxDistance = Math.max(minDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
+    if (currentDistance > minDistance && currentDistance < maxDistance) {
+      state.lastKiteDestinationKey = null;
+      clearCurrentFollowTarget();
+      return false;
+    }
+
+    if (now - state.lastKiteMoveAt < Math.max(100, Number(config.kiteMoveCooldownMs) || 350)) {
+      return false;
+    }
+
+    const destination = findReachableKitePosition(targetPosition, playerPosition, currentDistance);
+    if (!destination || typeof Position !== "function") {
+      return false;
+    }
+
+    try {
+      clearCurrentFollowTarget();
+      window.gameClient?.world?.pathfinder?.findPath?.(
+        bot.getPlayerPosition(),
+        new Position(destination.x, destination.y, destination.z)
+      );
+      state.lastKiteMoveAt = now;
+      state.lastKiteDestinationKey = getPositionKey(destination);
+      bot.log("repositioning auto attack target", {
+        id: target.id,
+        name: target.name || "Mob",
+        distance: currentDistance,
+        destination,
+      });
+      return true;
+    } catch (error) {
+      bot.log("auto attack kite movement failed", error?.message || error);
+      return false;
+    }
+  }
+
   function canAttack(now = Date.now()) {
     const slot = normalizeHotbarSlot(config.targetHotbarSlot);
     if (!slot) {
@@ -514,7 +658,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       return false;
     }
 
-    if (config.meleeMode) {
+    if (getCombatMovement() !== "hold") {
       return getMonsterCandidates(now).length > 0 && !getCurrentTarget();
     }
 
@@ -531,7 +675,6 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       ? engagedTarget
       : (getMonsterCandidates(now)[0] || null);
     if (preferredTarget && setCurrentTarget(preferredTarget)) {
-      state.lastTargetHotkeyAt = now;
       markCombatActive(now);
       bot.log("selected auto attack target", {
         id: preferredTarget.id,
@@ -541,23 +684,32 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       return true;
     }
 
-    if (config.meleeMode) {
+    if (getCombatMovement() !== "hold") {
       return false;
     }
 
+    return triggerTargetHotkey(now);
+  }
+
+  function triggerTargetHotkey(now = Date.now()) {
     const slot = normalizeHotbarSlot(config.targetHotbarSlot);
-    const clicked = bot.clickHotbar(slot - 1);
-    if (clicked) {
-      const monsters = getNearbyMonsters();
-      state.lastTargetHotkeyAt = now;
-      markCombatActive(now);
-      bot.log("used auto attack target hotkey", {
-        slot,
-        nearbyMonsters: monsters.map((creature) => creature.name || "Mob"),
-      });
+    if (!slot || now - state.lastTargetHotkeyAt < Math.max(0, Number(config.targetCooldownMs) || 0)) {
+      return false;
     }
 
-    return clicked;
+    const clicked = bot.clickHotbar(slot - 1);
+    if (!clicked) {
+      return false;
+    }
+
+    state.lastTargetHotkeyAt = now;
+    markCombatActive(now);
+    bot.log("used auto attack target hotkey", {
+      slot,
+      target: getCurrentTarget()?.name || null,
+      nearbyMonsters: getNearbyMonsters().map((creature) => creature.name || "Mob"),
+    });
+    return true;
   }
 
   function canUseRune(now = Date.now()) {
@@ -602,12 +754,22 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       return true;
     }
 
+    syncLockedTarget();
     syncCombatState(now);
 
-    if (config.meleeMode) {
+    if (getCombatMovement() === "kite") {
+      const repositioned = syncKiteMovement(now);
+      if (getCurrentTarget()) {
+        return triggerRune(now) || repositioned;
+      }
+
+      return triggerAttack(now) || repositioned;
+    }
+
+    if (getCombatMovement() === "follow") {
       const chased = syncMeleeChase(now);
       if (getCurrentTarget()) {
-        return false;
+        return triggerRune(now) || chased;
       }
 
       if (chased) {
@@ -711,6 +873,30 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   }
 
   function updateConfig(nextConfig = {}) {
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "tickMs")) {
+      nextConfig.tickMs = Math.max(100, Math.trunc(Number(nextConfig.tickMs) || config.tickMs));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "targetCooldownMs")) {
+      nextConfig.targetCooldownMs = Math.max(0, Number(nextConfig.targetCooldownMs) || 0);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "combatMovement")) {
+      nextConfig.combatMovement = nextConfig.combatMovement === "kite" ? "kite" : "auto";
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "kiteMinDistance")) {
+      nextConfig.kiteMinDistance = Math.max(1, Math.trunc(Number(nextConfig.kiteMinDistance) || config.kiteMinDistance));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "kiteMaxDistance")) {
+      nextConfig.kiteMaxDistance = Math.max(1, Math.trunc(Number(nextConfig.kiteMaxDistance) || config.kiteMaxDistance));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "kiteMoveCooldownMs")) {
+      nextConfig.kiteMoveCooldownMs = Math.max(100, Number(nextConfig.kiteMoveCooldownMs) || 0);
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "targetHotbarSlot")) {
       nextConfig.targetHotbarSlot = normalizeHotbarSlot(nextConfig.targetHotbarSlot) ?? config.targetHotbarSlot;
     }
@@ -724,6 +910,9 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     Object.assign(config, nextConfig);
+    config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
+    config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
+    config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
     persistConfig();
     bot.log("auto attack config updated", { ...config });
     return { ...config };
@@ -745,13 +934,17 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     tryAttack,
     canAttack,
     triggerAttack,
+    triggerTargetHotkey,
     canUseRune,
     triggerRune,
     getNearbyMonsters,
     getCurrentTarget,
     getCurrentFollowTarget,
+    syncLockedTarget,
     isCombatActive,
     syncMeleeChase,
+    syncKiteMovement,
+    getCombatMovement,
     normalizeHotbarSlot,
     config,
   };

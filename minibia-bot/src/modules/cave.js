@@ -1370,9 +1370,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       const positionKey = getPositionKey(position);
       const now = Date.now();
       const attackStatus = bot.attack?.status?.() || null;
-      const shouldPauseForCombat =
-        !!attackStatus?.combatActive &&
-        Number(attackStatus?.combatDurationMs || 0) < 60000;
+      const shouldPauseForCombat = !!attackStatus?.combatActive;
 
       if (shouldPauseForCombat) {
         if (!state.pausedForCombat) {

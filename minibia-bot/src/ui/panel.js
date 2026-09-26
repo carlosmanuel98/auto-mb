@@ -229,6 +229,13 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     autoMagicShieldToggle.checked = !!bot.magicShield?.status?.().running;
   }
 
+  function refreshAutoHasteStatus() {
+    const autoHasteToggle = document.getElementById("minibia-bot-auto-haste-enabled");
+    if (!autoHasteToggle) return;
+
+    autoHasteToggle.checked = !!bot.haste?.status?.().running;
+  }
+
   function refreshAutoAttackStatus() {
     const autoAttackToggle = document.getElementById("minibia-bot-auto-attack-enabled");
     if (!autoAttackToggle) return;
@@ -910,6 +917,22 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <input type="checkbox" id="minibia-bot-panic-return" />
                 <span>Auto Return</span>
               </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-player-appear-alert" />
+                <span>Sound: player appears</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-npc-appear-alert" />
+                <span>Sound: NPC appears</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-npc-pause-automation" />
+                <span>Stop Cavebot & Attack: NPC appears</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-player-chat-alert" />
+                <span>Sound: player chat</span>
+              </label>
               <div class="mb-inline">
                 <input type="text" id="minibia-bot-panic-trusted-input" placeholder="Trusted name" />
                 <button type="button" class="mb-small-button" id="minibia-bot-panic-trusted-add">Add</button>
@@ -946,6 +969,17 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                   <span class="mb-field-label">Eat Hotkey (1-12)</span>
                   <input type="number" id="minibia-bot-auto-eat-hotkey" min="1" max="12" placeholder="10" />
                 </label>
+                <label class="mb-field mb-field-compact" for="minibia-bot-auto-eat-mode">
+                  <span class="mb-field-label">Mode</span>
+                  <select id="minibia-bot-auto-eat-mode">
+                    <option value="whenHungry">When hungry</option>
+                    <option value="interval">Interval</option>
+                  </select>
+                </label>
+                <label class="mb-field mb-field-compact" for="minibia-bot-auto-eat-cooldown">
+                  <span class="mb-field-label">Cooldown (ms)</span>
+                  <input type="number" id="minibia-bot-auto-eat-cooldown" min="0" placeholder="60000" />
+                </label>
               </div>
               <div class="mb-row">
                 <label class="mb-toggle">
@@ -953,6 +987,20 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                   <span>Auto Invisible</span>
                 </label>
                 <div class="mb-small-note">Casts utana vid whenever invisibility is not active.</div>
+              </div>
+              <div class="mb-row">
+                <label class="mb-toggle">
+                  <input type="checkbox" id="minibia-bot-auto-haste-enabled" />
+                  <span>Auto Haste</span>
+                </label>
+                <label class="mb-field mb-field-compact" for="minibia-bot-auto-haste-spell">
+                  <span class="mb-field-label">Spell</span>
+                  <input type="text" id="minibia-bot-auto-haste-spell" placeholder="utani hur" />
+                </label>
+                <label class="mb-field mb-field-compact" for="minibia-bot-auto-haste-cooldown">
+                  <span class="mb-field-label">Recast cooldown (ms)</span>
+                  <input type="number" id="minibia-bot-auto-haste-cooldown" min="0" placeholder="2000" />
+                </label>
               </div>
               <div class="mb-row">
                 <label class="mb-toggle">
@@ -971,7 +1019,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
             </div>
           </div>
           <div class="mb-section mb-column-section">
-            <div class="mb-note">Loaded routines: Panic Runner, magic level trainer, auto eat, auto invisible, auto utamo vita, equip ring, auto heal, auto attack, and talk.</div>
+            <div class="mb-note">Loaded routines: Panic Runner, magic level trainer, auto eat, auto haste, auto invisible, auto utamo vita, equip ring, auto heal, auto attack, and talk.</div>
           </div>
         </div>
         <div class="mb-side-column">
@@ -1067,6 +1115,23 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <input type="checkbox" id="minibia-bot-auto-attack-melee" />
                 <span>Melee Mode</span>
               </label>
+              <label class="mb-field" for="minibia-bot-auto-attack-movement">
+                <span class="mb-field-label">Movement</span>
+                <select id="minibia-bot-auto-attack-movement">
+                  <option value="auto">Default (melee setting)</option>
+                  <option value="kite">Kite (keep distance)</option>
+                </select>
+              </label>
+              <div class="mb-field-grid">
+                <label class="mb-field" for="minibia-bot-auto-attack-kite-min-distance">
+                  <span class="mb-field-label">Kite min distance</span>
+                  <input type="number" id="minibia-bot-auto-attack-kite-min-distance" min="1" placeholder="3" />
+                </label>
+                <label class="mb-field" for="minibia-bot-auto-attack-kite-max-distance">
+                  <span class="mb-field-label">Kite max distance</span>
+                  <input type="number" id="minibia-bot-auto-attack-kite-max-distance" min="1" placeholder="5" />
+                </label>
+              </div>
               <label class="mb-field" for="minibia-bot-auto-attack-hotkey">
                 <span class="mb-field-label">Target Hotkey (1-12)</span>
                 <input type="number" id="minibia-bot-auto-attack-hotkey" min="1" max="12" placeholder="3" />
@@ -1075,7 +1140,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <span class="mb-field-label">Rune Hotkey (1-12)</span>
                 <input type="number" id="minibia-bot-auto-attack-rune-hotkey" min="1" max="12" placeholder="4" />
               </label>
-              <div class="mb-small-note">Melee mode uses the target hotkey, then walks adjacent to the target. Non-melee mode uses the target hotkey to acquire a target and the rune hotkey to cast on that target.</div>
+              <div class="mb-small-note">Melee follows adjacent; kite keeps the configured range while firing the target hotkey. Default preserves the melee setting.</div>
             </div>
           </div>
         </div>
@@ -1104,8 +1169,13 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const runeEnabledInput = panel.querySelector("#minibia-bot-rune-enabled");
     const autoEatEnabledInput = panel.querySelector("#minibia-bot-auto-eat-enabled");
     const autoEatHotkeyInput = panel.querySelector("#minibia-bot-auto-eat-hotkey");
+    const autoEatModeInput = panel.querySelector("#minibia-bot-auto-eat-mode");
+    const autoEatCooldownInput = panel.querySelector("#minibia-bot-auto-eat-cooldown");
     const autoInvisibleEnabledInput = panel.querySelector("#minibia-bot-auto-invisible-enabled");
     const autoMagicShieldEnabledInput = panel.querySelector("#minibia-bot-auto-magic-shield-enabled");
+    const autoHasteEnabledInput = panel.querySelector("#minibia-bot-auto-haste-enabled");
+    const autoHasteSpellInput = panel.querySelector("#minibia-bot-auto-haste-spell");
+    const autoHasteCooldownInput = panel.querySelector("#minibia-bot-auto-haste-cooldown");
     const equipRingEnabledInput = panel.querySelector("#minibia-bot-equip-ring-enabled");
     const autoHealEnabledInput = panel.querySelector("#minibia-bot-auto-heal-enabled");
     const autoHealMinHpInput = panel.querySelector("#minibia-bot-auto-heal-min-hp");
@@ -1114,6 +1184,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
     const autoAttackEnabledInput = panel.querySelector("#minibia-bot-auto-attack-enabled");
     const autoAttackMeleeInput = panel.querySelector("#minibia-bot-auto-attack-melee");
+    const autoAttackMovementInput = panel.querySelector("#minibia-bot-auto-attack-movement");
+    const autoAttackKiteMinDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-min-distance");
+    const autoAttackKiteMaxDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-max-distance");
     const autoAttackHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-hotkey");
     const autoAttackRuneHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-rune-hotkey");
     const talkEnabledInput = panel.querySelector("#minibia-bot-talk-enabled");
@@ -1124,6 +1197,10 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const panicUnknownInput = panel.querySelector("#minibia-bot-panic-unknown");
     const panicHealthInput = panel.querySelector("#minibia-bot-panic-health");
     const panicReturnInput = panel.querySelector("#minibia-bot-panic-return");
+    const playerAppearAlertInput = panel.querySelector("#minibia-bot-player-appear-alert");
+    const npcAppearAlertInput = panel.querySelector("#minibia-bot-npc-appear-alert");
+    const npcPauseAutomationInput = panel.querySelector("#minibia-bot-npc-pause-automation");
+    const playerChatAlertInput = panel.querySelector("#minibia-bot-player-chat-alert");
     const panicTrustedInput = panel.querySelector("#minibia-bot-panic-trusted-input");
     const panicTrustedAddButton = panel.querySelector("#minibia-bot-panic-trusted-add");
     const xrayOverlayButton = panel.querySelector("#minibia-bot-xray-overlay-toggle");
@@ -1262,6 +1339,22 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (autoEatModeInput) {
+      autoEatModeInput.value = bot.eat?.config?.eatMode === "interval" ? "interval" : "whenHungry";
+      autoEatModeInput.addEventListener("change", () => {
+        bot.eat.updateConfig({ eatMode: autoEatModeInput.value });
+      });
+    }
+
+    if (autoEatCooldownInput) {
+      autoEatCooldownInput.value = String(bot.eat?.config?.eatCooldownMs ?? 60000);
+      autoEatCooldownInput.addEventListener("change", () => {
+        const eatCooldownMs = Math.max(0, Number(autoEatCooldownInput.value) || 0);
+        autoEatCooldownInput.value = String(eatCooldownMs);
+        bot.eat.updateConfig({ eatCooldownMs });
+      });
+    }
+
     if (autoEatEnabledInput) {
       autoEatEnabledInput.checked = !!bot.eat?.status?.().running;
       autoEatEnabledInput.addEventListener("change", () => {
@@ -1277,6 +1370,38 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         }
 
         refreshAutoEatStatus();
+      });
+    }
+
+    if (autoHasteSpellInput) {
+      autoHasteSpellInput.value = bot.haste?.config?.spellWords || "utani hur";
+      autoHasteSpellInput.addEventListener("change", () => {
+        bot.haste.updateConfig({ spellWords: autoHasteSpellInput.value.trim() });
+      });
+    }
+
+    if (autoHasteCooldownInput) {
+      autoHasteCooldownInput.value = String(bot.haste?.config?.recastCooldownMs ?? 2000);
+      autoHasteCooldownInput.addEventListener("change", () => {
+        const recastCooldownMs = Math.max(0, Number(autoHasteCooldownInput.value) || 0);
+        autoHasteCooldownInput.value = String(recastCooldownMs);
+        bot.haste.updateConfig({ recastCooldownMs });
+      });
+    }
+
+    if (autoHasteEnabledInput) {
+      autoHasteEnabledInput.checked = !!bot.haste?.status?.().running;
+      autoHasteEnabledInput.addEventListener("change", () => {
+        if (autoHasteEnabledInput.checked) {
+          bot.haste.start({
+            spellWords: autoHasteSpellInput?.value?.trim() || bot.haste.config.spellWords,
+            recastCooldownMs: Math.max(0, Number(autoHasteCooldownInput?.value) || bot.haste.config.recastCooldownMs || 0),
+          });
+        } else {
+          bot.haste.stop();
+        }
+
+        refreshAutoHasteStatus();
       });
     }
 
@@ -1503,6 +1628,31 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (autoAttackMovementInput) {
+      autoAttackMovementInput.value = bot.attack?.config?.combatMovement === "kite" ? "kite" : "auto";
+      autoAttackMovementInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ combatMovement: autoAttackMovementInput.value });
+      });
+    }
+
+    function updateKiteDistance() {
+      const kiteMinDistance = Math.max(1, Number(autoAttackKiteMinDistanceInput?.value) || bot.attack.config.kiteMinDistance || 3);
+      const kiteMaxDistance = Math.max(kiteMinDistance, Number(autoAttackKiteMaxDistanceInput?.value) || bot.attack.config.kiteMaxDistance || 5);
+      if (autoAttackKiteMinDistanceInput) autoAttackKiteMinDistanceInput.value = String(kiteMinDistance);
+      if (autoAttackKiteMaxDistanceInput) autoAttackKiteMaxDistanceInput.value = String(kiteMaxDistance);
+      bot.attack.updateConfig({ kiteMinDistance, kiteMaxDistance });
+    }
+
+    if (autoAttackKiteMinDistanceInput) {
+      autoAttackKiteMinDistanceInput.value = String(bot.attack?.config?.kiteMinDistance ?? 3);
+      autoAttackKiteMinDistanceInput.addEventListener("change", updateKiteDistance);
+    }
+
+    if (autoAttackKiteMaxDistanceInput) {
+      autoAttackKiteMaxDistanceInput.value = String(bot.attack?.config?.kiteMaxDistance ?? 5);
+      autoAttackKiteMaxDistanceInput.addEventListener("change", updateKiteDistance);
+    }
+
     if (autoAttackEnabledInput) {
       autoAttackEnabledInput.checked = !!bot.attack?.status?.().running;
       autoAttackEnabledInput.addEventListener("change", () => {
@@ -1519,9 +1669,10 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
           return bot.attack.config.runeHotbarSlot ?? null;
         })();
         const meleeMode = !!autoAttackMeleeInput?.checked;
+        const combatMovement = autoAttackMovementInput?.value === "kite" ? "kite" : "auto";
 
         if (autoAttackEnabledInput.checked) {
-          bot.attack.start({ targetHotbarSlot, runeHotbarSlot, meleeMode });
+          bot.attack.start({ targetHotbarSlot, runeHotbarSlot, meleeMode, combatMovement });
         } else {
           bot.attack.stop();
         }
@@ -1589,6 +1740,38 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (playerAppearAlertInput) {
+      playerAppearAlertInput.checked = !!bot.panic?.status?.().config?.playerAppearAlertEnabled;
+      playerAppearAlertInput.addEventListener("change", () => {
+        bot.panic.updateConfig({ playerAppearAlertEnabled: playerAppearAlertInput.checked });
+        refreshPanicStatus();
+      });
+    }
+
+    if (npcAppearAlertInput) {
+      npcAppearAlertInput.checked = !!bot.panic?.status?.().config?.npcAppearAlertEnabled;
+      npcAppearAlertInput.addEventListener("change", () => {
+        bot.panic.updateConfig({ npcAppearAlertEnabled: npcAppearAlertInput.checked });
+        refreshPanicStatus();
+      });
+    }
+
+    if (npcPauseAutomationInput) {
+      npcPauseAutomationInput.checked = !!bot.panic?.status?.().config?.npcPauseAutomationEnabled;
+      npcPauseAutomationInput.addEventListener("change", () => {
+        bot.panic.updateConfig({ npcPauseAutomationEnabled: npcPauseAutomationInput.checked });
+        refreshPanicStatus();
+      });
+    }
+
+    if (playerChatAlertInput) {
+      playerChatAlertInput.checked = !!bot.panic?.status?.().config?.playerChatAlertEnabled;
+      playerChatAlertInput.addEventListener("change", () => {
+        bot.panic.updateConfig({ playerChatAlertEnabled: playerChatAlertInput.checked });
+        refreshPanicStatus();
+      });
+    }
+
     if (xrayOverlayButton) {
       xrayOverlayButton.addEventListener("click", () => {
         const enabled = !!bot.xray?.status?.().config?.overlayEnabled;
@@ -1620,6 +1803,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     refreshAutoHealStatus();
     refreshAutoInvisibleStatus();
     refreshAutoMagicShieldStatus();
+    refreshAutoHasteStatus();
     refreshAutoAttackStatus();
     refreshAutoEatStatus();
     refreshCaveStatus();
@@ -1662,6 +1846,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     refreshAutoHealStatus,
     refreshAutoInvisibleStatus,
     refreshAutoMagicShieldStatus,
+    refreshAutoHasteStatus,
     refreshAutoAttackStatus,
     refreshAutoEatStatus,
     refreshCaveStatus,

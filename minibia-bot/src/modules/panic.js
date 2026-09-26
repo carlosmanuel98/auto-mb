@@ -13,6 +13,10 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     returnNotBeforeAt: 0,
     lastThreatAt: 0,
     lastReturnAttemptAt: 0,
+    visiblePlayerKeys: new Set(),
+    visibleNpcKeys: new Set(),
+    seenChatKeys: new Set(),
+    lastAlertAt: 0,
   };
 
   const config = Object.assign(
@@ -25,6 +29,11 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       returnRetryCooldownMs: 2000,
       unknownPlayerEnabled: false,
       healthLossEnabled: false,
+      playerAppearAlertEnabled: false,
+      npcAppearAlertEnabled: false,
+      npcPauseAutomationEnabled: true,
+      playerChatAlertEnabled: false,
+      alertCooldownMs: 3000,
       trustedNames: [],
       gameMasterNames: [],
     },
@@ -92,6 +101,30 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     });
   }
 
+  function getScreenVisiblePlayers() {
+    const me = bot.getPlayerPosition();
+    if (!me) {
+      return [];
+    }
+
+    return (bot.xray?.getVisiblePlayers?.({ sameFloorOnly: true }) || []).filter((creature) => {
+      const z = Number(creature?.__position?.z);
+      return Number.isFinite(z) && z === Number(me.z);
+    });
+  }
+
+  function getScreenVisibleNpcs() {
+    const npcType = window.CONST?.TYPES?.NPC;
+    const me = bot.getPlayerPosition();
+    if (npcType == null || !me) {
+      return [];
+    }
+
+    return (bot.xray?.getVisibleCreatures?.() || []).filter(
+      (creature) => creature?.type === npcType && creature.__position?.z === me.z
+    );
+  }
+
   function getUnknownVisiblePlayers() {
     const trusted = new Set(getTrustedNames());
 
@@ -121,12 +154,129 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
 
   function getRecentChannelMessages() {
     return (window.gameClient?.interface?.channelManager?.channels || []).flatMap((channel) =>
-      (channel?.__contents || []).map((entry) => ({
-        channelName: channel?.name || null,
-        message: String(entry?.message || ""),
-        time: entry?.__time || null,
-      }))
+      (channel?.__contents || []).map((entry) => {
+        const message = String(entry?.message || "");
+        const sender = String(entry?.author || entry?.sender || entry?.name || "").trim() ||
+          (message.match(/^([^:]{1,50}):\s/)?.[1]?.trim() || "");
+        return {
+          channelName: channel?.name || null,
+          message,
+          time: entry?.__time || null,
+          sender,
+          senderType: entry?.type ?? entry?.senderType ?? null,
+          isPrivate: typeof PrivateChannel === "function" && channel instanceof PrivateChannel,
+        };
+      })
     );
+  }
+
+  function getPlayerKey(player) {
+    return String(player?.id ?? normalizeName(player?.name) ?? "");
+  }
+
+  function getChatAlertKey(entry) {
+    return `${entry.channelName || ""}|${entry.time || ""}|${entry.sender || ""}|${entry.message || ""}`;
+  }
+
+  function playAlert(reason, details = {}) {
+    const now = Date.now();
+    if (now - state.lastAlertAt < normalizeDelayMs(config.alertCooldownMs, 3000)) {
+      return false;
+    }
+
+    state.lastAlertAt = now;
+    bot.playAlarm?.();
+    bot.log("player alert", { reason, ...details });
+    return true;
+  }
+
+  function checkPlayerAppearAlert() {
+    const visiblePlayers = getScreenVisiblePlayers();
+    const currentKeys = new Set(visiblePlayers.map(getPlayerKey).filter(Boolean));
+    const appeared = visiblePlayers.filter((player) => !state.visiblePlayerKeys.has(getPlayerKey(player)));
+    state.visiblePlayerKeys = currentKeys;
+
+    if (!config.playerAppearAlertEnabled || !appeared.length) {
+      return false;
+    }
+
+    return playAlert("player-appeared", { players: appeared.map((player) => player.name) });
+  }
+
+  function checkNpcAppearAlert() {
+    const visibleNpcs = getScreenVisibleNpcs();
+    const currentKeys = new Set(visibleNpcs.map(getPlayerKey).filter(Boolean));
+    const appeared = visibleNpcs.filter((npc) => !state.visibleNpcKeys.has(getPlayerKey(npc)));
+    state.visibleNpcKeys = currentKeys;
+
+    if (config.npcAppearAlertEnabled && appeared.length) {
+      playAlert("npc-appeared", { npcs: appeared.map((npc) => npc.name) });
+    }
+
+    return appeared;
+  }
+
+  function stopAutomationsForNpc(npcs) {
+    if (!config.npcPauseAutomationEnabled || !npcs.length) {
+      return false;
+    }
+
+    const stoppedCave = !!bot.cave?.stop?.();
+    const stoppedAttack = !!bot.attack?.stop?.();
+    bot.log("npc detected: automation stopped", {
+      npcs: npcs.map((npc) => npc.name),
+      stoppedCave,
+      stoppedAttack,
+    });
+    bot.ui?.refreshAutoAttackStatus?.();
+    bot.ui?.refreshCaveStatus?.();
+    return stoppedCave || stoppedAttack;
+  }
+
+  function checkPlayerChatAlert() {
+    const selfName = normalizeName(bot.getPlayerName?.());
+    const playerType = window.CONST?.TYPES?.PLAYER;
+    const npcType = window.CONST?.TYPES?.NPC;
+    const messages = getRecentChannelMessages();
+    const newMessages = messages.filter((entry) => {
+      const key = getChatAlertKey(entry);
+      if (state.seenChatKeys.has(key)) {
+        return false;
+      }
+      state.seenChatKeys.add(key);
+      if (!entry.sender || normalizeName(entry.sender) === selfName) {
+        return false;
+      }
+
+      if (npcType != null && entry.senderType === npcType) {
+        return false;
+      }
+
+      const senderIsOnScreen = getScreenVisiblePlayers().some(
+        (player) => normalizeName(player?.name) === normalizeName(entry.sender)
+      );
+      if (!entry.isPrivate && !senderIsOnScreen) {
+        return false;
+      }
+
+      if (playerType != null && entry.senderType != null) {
+        return entry.senderType === playerType;
+      }
+
+      return entry.isPrivate || senderIsOnScreen;
+    });
+
+    if (state.seenChatKeys.size > 200) {
+      state.seenChatKeys = new Set(Array.from(state.seenChatKeys).slice(-100));
+    }
+
+    if (!config.playerChatAlertEnabled || !newMessages.length) {
+      return false;
+    }
+
+    return playAlert("player-chat", {
+      players: Array.from(new Set(newMessages.map((entry) => entry.sender))),
+    });
   }
 
   function parseDamageMessage(entry) {
@@ -439,6 +589,9 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     if (!state.running) return;
 
     try {
+      checkPlayerAppearAlert();
+      stopAutomationsForNpc(checkNpcAppearAlert());
+      checkPlayerChatAlert();
       const triggered = checkGameMasters() || checkUnknownPlayers() || checkHealthLoss();
       if (!triggered) {
         tryReturnToOrigin();
@@ -449,7 +602,15 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
   }
 
   function shouldRun() {
-    return !!(getGameMasterNames().length || config.unknownPlayerEnabled || config.healthLossEnabled);
+    return !!(
+      getGameMasterNames().length ||
+      config.unknownPlayerEnabled ||
+      config.healthLossEnabled ||
+      config.playerAppearAlertEnabled ||
+      config.npcAppearAlertEnabled ||
+      config.npcPauseAutomationEnabled ||
+      config.playerChatAlertEnabled
+    );
   }
 
   function start() {
@@ -460,6 +621,9 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     state.running = true;
     state.lastHealth = Number(bot.getPlayerState()?.health ?? 0);
     state.lastDamageEventKey = getLatestDamageEvent()?.key || null;
+    state.visiblePlayerKeys = new Set(getVisiblePlayers().map(getPlayerKey).filter(Boolean));
+    state.visibleNpcKeys = new Set(getScreenVisibleNpcs().map(getPlayerKey).filter(Boolean));
+    state.seenChatKeys = new Set(getRecentChannelMessages().map(getChatAlertKey));
     bot.log("panic runner started", { ...config });
     tick();
     return true;
@@ -480,6 +644,9 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
 
     state.lastHealth = null;
     state.lastDamageEventKey = null;
+    state.visiblePlayerKeys.clear();
+    state.visibleNpcKeys.clear();
+    state.seenChatKeys.clear();
     clearPendingReturn();
     bot.log("panic runner stopped");
     return true;
@@ -510,6 +677,10 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
 
     if ("triggerCooldownMs" in next) {
       next.triggerCooldownMs = normalizeDelayMs(next.triggerCooldownMs, config.triggerCooldownMs);
+    }
+
+    if ("alertCooldownMs" in next) {
+      next.alertCooldownMs = normalizeDelayMs(next.alertCooldownMs, config.alertCooldownMs);
     }
 
     if ("returnDelayMs" in next) {
@@ -549,6 +720,11 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
         id: player.id,
         name: player.name,
         position: player.__position || null,
+      })),
+      visibleNpcs: getScreenVisibleNpcs().map((npc) => ({
+        id: npc.id,
+        name: npc.name,
+        position: npc.__position || null,
       })),
       unknownVisiblePlayers: getUnknownVisiblePlayers().map((player) => ({
         id: player.id,
@@ -590,6 +766,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     status,
     updateConfig,
     getVisiblePlayers,
+    getScreenVisibleNpcs,
     getUnknownVisiblePlayers,
     getTrustedVisiblePlayers,
     getVisibleGameMasters,

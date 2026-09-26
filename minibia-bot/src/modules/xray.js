@@ -98,12 +98,13 @@ window.__minibiaBotBundle.installXrayModule = function installXrayModule(bot) {
   function getVisibleMonsters(options = {}) {
     const { sameFloorOnly = false } = options;
     const me = bot.getPlayerPosition();
+    const npcType = window.CONST?.TYPES?.NPC;
     if (!me) {
       return [];
     }
 
     return getVisibleCreatures().filter((creature) => {
-      if (creature?.type === 0) {
+      if (creature?.type === 0 || (npcType != null && creature?.type === npcType)) {
         return false;
       }
 

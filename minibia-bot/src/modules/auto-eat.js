@@ -13,11 +13,13 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
       tickMs: 1000,
       eatCooldownMs: 60000,
       eatHotbarSlot: 10,
+      eatMode: "whenHungry",
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 1000;
+  config.eatMode = config.eatMode === "interval" ? "interval" : "whenHungry";
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -53,12 +55,27 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
       : { text: foodText, seconds: null };
   }
 
+  function normalizeEatMode(mode) {
+    return mode === "interval" ? "interval" : "whenHungry";
+  }
+
   function isSated() {
     const player = window.gameClient?.player;
     const conditions = player?.conditions;
 
-    if (conditions?.has && conditions.SATED != null) {
-      return conditions.has(conditions.SATED);
+    const satedConditionId = conditions?.SATED;
+    if (typeof satedConditionId === "number") {
+      if (typeof conditions?.has === "function") {
+        return conditions.has(satedConditionId);
+      }
+
+      if (conditions?.__conditions instanceof Set) {
+        return conditions.__conditions.has(satedConditionId);
+      }
+
+      if (typeof player?.hasCondition === "function") {
+        return player.hasCondition(satedConditionId);
+      }
     }
 
     const food = readFoodTimer();
@@ -66,7 +83,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
       return food.seconds > 0;
     }
 
-    return true;
+    return null;
   }
 
   function tryEat() {
@@ -74,7 +91,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
       return false;
     }
 
-    if (isSated()) {
+    if (config.eatMode === "whenHungry" && isSated() === true) {
       return false;
     }
 
@@ -92,7 +109,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
 
     if (clicked) {
       state.lastFoodAt = Date.now();
-      bot.log("used eat hotkey", { slot });
+      bot.log("used eat hotkey", { slot, eatMode: config.eatMode });
     }
 
     return clicked;
@@ -129,7 +146,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
     }
 
     state.running = true;
-    bot.log("auto eat started", { eatCooldownMs: config.eatCooldownMs, eatHotbarSlot: config.eatHotbarSlot });
+    bot.log("auto eat started", { eatCooldownMs: config.eatCooldownMs, eatHotbarSlot: config.eatHotbarSlot, eatMode: config.eatMode });
     tick();
     return true;
   }
@@ -161,6 +178,10 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
   }
 
   function updateConfig(nextConfig = {}) {
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "eatMode")) {
+      nextConfig.eatMode = normalizeEatMode(nextConfig.eatMode);
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "eatHotbarSlot")) {
       nextConfig.eatHotbarSlot = normalizeHotbarSlot(nextConfig.eatHotbarSlot) ?? config.eatHotbarSlot;
     }
@@ -170,6 +191,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
     }
 
     Object.assign(config, nextConfig);
+    config.eatMode = normalizeEatMode(config.eatMode);
     config.tickMs = 1000;
     persistConfig();
     bot.log("auto eat config updated", { ...config });
