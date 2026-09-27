@@ -2,6 +2,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) {
   const configStorageKey = "minibiaBot.panic.config";
+  const defaultGameMasterNames = ["God Minibia"];
   const state = {
     running: false,
     timerId: null,
@@ -35,7 +36,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       playerChatAlertEnabled: false,
       alertCooldownMs: 3000,
       trustedNames: [],
-      gameMasterNames: [],
+      gameMasterNames: [...defaultGameMasterNames],
     },
     bot.storage.get(configStorageKey, {})
   );
@@ -47,6 +48,19 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
   function normalizeName(name) {
     return String(name || "").trim().toLowerCase();
   }
+
+  function ensureDefaultGameMasterNames(names) {
+    const result = Array.isArray(names) ? [...names] : [];
+    const normalizedNames = new Set(result.map(normalizeName).filter(Boolean));
+    defaultGameMasterNames.forEach((name) => {
+      if (!normalizedNames.has(normalizeName(name))) {
+        result.push(name);
+      }
+    });
+    return result;
+  }
+
+  config.gameMasterNames = ensureDefaultGameMasterNames(config.gameMasterNames);
 
   function normalizeDelayMs(value, fallback = 0) {
     const next = Math.trunc(Number(value));
@@ -670,9 +684,9 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     }
 
     if (Array.isArray(next.gameMasterNames)) {
-      next.gameMasterNames = next.gameMasterNames
+      next.gameMasterNames = ensureDefaultGameMasterNames(next.gameMasterNames
         .map((name) => String(name || "").trim())
-        .filter(Boolean);
+        .filter(Boolean));
     }
 
     if ("triggerCooldownMs" in next) {

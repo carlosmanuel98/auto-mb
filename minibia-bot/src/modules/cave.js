@@ -41,6 +41,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       repathMs: 1500,
       waypointTolerance: 0,
       enabled: false,
+      unexpectedMonsterAlertEnabled: true,
       activePresetName: defaultPresetName,
     },
     bot.storage.get(configStorageKey, {})
@@ -50,6 +51,20 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
   function normalizePresetName(value) {
     const normalized = String(value || "").trim().replace(/\s+/g, " ");
     return normalized || null;
+  }
+
+  function normalizeMonsterNames(value) {
+    const names = Array.isArray(value) ? value : String(value || "").split(",");
+    const deduped = new Map();
+
+    names.forEach((name) => {
+      const displayName = String(name || "").trim().replace(/\s+/g, " ");
+      if (displayName) {
+        deduped.set(displayName.toLowerCase(), displayName);
+      }
+    });
+
+    return Array.from(deduped.values());
   }
 
   function cloneValue(value) {
@@ -70,6 +85,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name,
       route: normalizeRoute(value.route),
       transitions: normalizeTransitions(value.transitions),
+      allowedMonsters: normalizeMonsterNames(value.allowedMonsters),
     };
   }
 
@@ -86,6 +102,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
   let route = normalizeRoute(bot.storage.get(routeStorageKey, []));
   let transitions = normalizeTransitions(bot.storage.get(transitionStorageKey, []));
+  let allowedMonsters = [];
   let presets = normalizePresets(bot.storage.get(presetStorageKey, []));
 
   if (!presets.length && (route.length || transitions.length)) {
@@ -93,6 +110,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: defaultPresetName,
       route: route.map((waypoint) => cloneValue(waypoint)),
       transitions: transitions.map((transition) => cloneValue(transition)),
+      allowedMonsters: [],
     }];
   }
 
@@ -129,6 +147,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
         name: preset.name,
         route: preset.route.map((waypoint) => ({ ...waypoint })),
         transitions: preset.transitions.map((transition) => cloneValue(transition)),
+        allowedMonsters: [...preset.allowedMonsters],
       }))
     );
   }
@@ -144,7 +163,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     return config.activePresetName;
   }
 
-  function upsertPreset(name, nextRoute = route, nextTransitions = transitions) {
+  function upsertPreset(name, nextRoute = route, nextTransitions = transitions, nextAllowedMonsters = allowedMonsters) {
     const normalizedName = normalizePresetName(name);
     if (!normalizedName) {
       return null;
@@ -154,6 +173,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: normalizedName,
       route: normalizeRoute(nextRoute).map((waypoint) => cloneValue(waypoint)),
       transitions: normalizeTransitions(nextTransitions).map((transition) => cloneValue(transition)),
+      allowedMonsters: normalizeMonsterNames(nextAllowedMonsters),
     };
     const existingIndex = presets.findIndex((entry) => entry.name.toLowerCase() === normalizedName.toLowerCase());
 
@@ -168,7 +188,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
   }
 
   function persistActivePreset() {
-    upsertPreset(getActivePresetName(), route, transitions);
+    upsertPreset(getActivePresetName(), route, transitions, allowedMonsters);
     persistLegacyActivePreset();
   }
 
@@ -180,6 +200,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
     route = normalizeRoute(preset.route);
     transitions = normalizeTransitions(preset.transitions);
+    allowedMonsters = normalizeMonsterNames(preset.allowedMonsters);
     state.currentIndex = 0;
     state.direction = 1;
     state.pendingTransitionSource = null;
@@ -276,12 +297,26 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     return transitions.map((transition) => cloneValue(transition));
   }
 
+  function getAllowedMonsters() {
+    return [...allowedMonsters];
+  }
+
+  function setAllowedMonsters(nextAllowedMonsters) {
+    allowedMonsters = normalizeMonsterNames(nextAllowedMonsters);
+    persistActivePreset();
+    bot.log("cave allowed monsters updated", {
+      preset: getActivePresetName(),
+      allowedMonsters: [...allowedMonsters],
+    });
+    return getAllowedMonsters();
+  }
+
   function persistTransitions() {
     persistActivePreset();
   }
 
   function savePreset(name, options = {}) {
-    const preset = upsertPreset(name, route, transitions);
+    const preset = upsertPreset(name, route, transitions, allowedMonsters);
     if (!preset) {
       bot.log("cave preset name is required");
       return null;
@@ -301,6 +336,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: preset.name,
       route: preset.route.map((waypoint) => cloneValue(waypoint)),
       transitions: preset.transitions.map((transition) => cloneValue(transition)),
+      allowedMonsters: [...preset.allowedMonsters],
     };
   }
 
@@ -320,7 +356,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       stop();
     }
 
-    const preset = upsertPreset(normalizedName, [], []);
+    const preset = upsertPreset(normalizedName, [], [], []);
     if (!preset) {
       return null;
     }
@@ -331,6 +367,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: preset.name,
       route: [],
       transitions: [],
+      allowedMonsters: [],
     };
   }
 
@@ -355,6 +392,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: preset.name,
       route: getRoute(),
       transitions: getTransitions(),
+      allowedMonsters: getAllowedMonsters(),
     };
   }
 
@@ -1355,6 +1393,36 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     }, config.tickMs);
   }
 
+  function getUnexpectedVisibleMonsters() {
+    if (!config.unexpectedMonsterAlertEnabled || !allowedMonsters.length) {
+      return [];
+    }
+
+    const allowedNames = new Set(allowedMonsters.map((name) => name.toLowerCase()));
+    return (bot.xray?.getVisibleMonsters?.({ sameFloorOnly: true }) || []).filter(
+      (monster) => !allowedNames.has(String(monster?.name || "").trim().toLowerCase())
+    );
+  }
+
+  function stopForUnexpectedMonsters(monsters) {
+    if (!monsters.length) {
+      return false;
+    }
+
+    const names = Array.from(new Set(monsters.map((monster) => monster.name).filter(Boolean)));
+    bot.playAlarm?.();
+    bot.log("unexpected monster detected: cave and attack stopped", {
+      preset: getActivePresetName(),
+      monsters: names,
+      allowedMonsters: [...allowedMonsters],
+    });
+    bot.attack?.stop?.();
+    stop();
+    bot.ui?.refreshAutoAttackStatus?.();
+    bot.ui?.refreshCaveStatus?.();
+    return true;
+  }
+
   function tick() {
     if (!state.running) return;
 
@@ -1363,6 +1431,10 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
       if (!route.length) {
         stop();
+        return;
+      }
+
+      if (stopForUnexpectedMonsters(getUnexpectedVisibleMonsters())) {
         return;
       }
 
@@ -1598,6 +1670,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       config: { ...config },
       route: getRoute(),
       transitions: getTransitions(),
+      allowedMonsters: getAllowedMonsters(),
       presetNames: getPresetNames(),
       activePresetName: getActivePresetName(),
       currentIndex: state.currentIndex,
@@ -1636,6 +1709,8 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     config,
     getRoute,
     getTransitions,
+    getAllowedMonsters,
+    setAllowedMonsters,
     getPresetNames,
     getActivePresetName,
     getCurrentWaypoint,

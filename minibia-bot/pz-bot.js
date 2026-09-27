@@ -1115,6 +1115,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) {
   const configStorageKey = "minibiaBot.panic.config";
+  const defaultGameMasterNames = ["God Minibia"];
   const state = {
     running: false,
     timerId: null,
@@ -1148,7 +1149,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       playerChatAlertEnabled: false,
       alertCooldownMs: 3000,
       trustedNames: [],
-      gameMasterNames: [],
+      gameMasterNames: [...defaultGameMasterNames],
     },
     bot.storage.get(configStorageKey, {})
   );
@@ -1160,6 +1161,19 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
   function normalizeName(name) {
     return String(name || "").trim().toLowerCase();
   }
+
+  function ensureDefaultGameMasterNames(names) {
+    const result = Array.isArray(names) ? [...names] : [];
+    const normalizedNames = new Set(result.map(normalizeName).filter(Boolean));
+    defaultGameMasterNames.forEach((name) => {
+      if (!normalizedNames.has(normalizeName(name))) {
+        result.push(name);
+      }
+    });
+    return result;
+  }
+
+  config.gameMasterNames = ensureDefaultGameMasterNames(config.gameMasterNames);
 
   function normalizeDelayMs(value, fallback = 0) {
     const next = Math.trunc(Number(value));
@@ -1783,9 +1797,9 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     }
 
     if (Array.isArray(next.gameMasterNames)) {
-      next.gameMasterNames = next.gameMasterNames
+      next.gameMasterNames = ensureDefaultGameMasterNames(next.gameMasterNames
         .map((name) => String(name || "").trim())
-        .filter(Boolean);
+        .filter(Boolean));
     }
 
     if ("triggerCooldownMs" in next) {
@@ -2152,6 +2166,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       healRetryMs: 200,
       healConfirmMs: 250,
       minHp: 250,
+      minHpPercent: 50,
       hpHotbarSlot: 1,
       minMana: 150,
       manaHotbarSlot: 2,
@@ -2159,6 +2174,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     },
     bot.storage.get(configStorageKey, {})
   );
+  config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -2254,7 +2270,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
 
     return (
       hp.current > 0 &&
-      hp.current <= Math.max(0, Number(config.minHp) || 0) &&
+      hp.max > 0 &&
+      (hp.current / hp.max) * 100 <= config.minHpPercent &&
       now - state.lastHpHealAt >= config.healCooldownMs &&
       now - state.lastHpAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
@@ -2287,7 +2304,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
         hpBefore: Number(stats.hp?.current ?? 0),
         manaBefore: Number(stats.mana?.current ?? 0),
       };
-      bot.log("pressed hp heal hotkey", { slot, minHp: config.minHp });
+      bot.log("pressed hp heal hotkey", { slot, minHpPercent: config.minHpPercent });
     }
 
     return clicked;
@@ -2414,6 +2431,10 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       nextConfig.minHp = Math.max(0, Number(nextConfig.minHp) || 0);
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "minHpPercent")) {
+      nextConfig.minHpPercent = Math.min(100, Math.max(1, Number(nextConfig.minHpPercent) || 1));
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "minMana")) {
       nextConfig.minMana = Math.max(0, Number(nextConfig.minMana) || 0);
     }
@@ -2427,6 +2448,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     }
 
     Object.assign(config, nextConfig);
+    config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };
@@ -3127,6 +3149,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       kiteMinDistance: 3,
       kiteMaxDistance: 5,
       kiteMoveCooldownMs: 350,
+      ignoredMonsterNames: [],
       enabled: false,
     },
     storedConfig
@@ -3138,6 +3161,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
   config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
   config.kiteMoveCooldownMs = Math.max(100, Number(config.kiteMoveCooldownMs) || 350);
+  config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -3155,6 +3179,21 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     return normalized;
+  }
+
+  function normalizeMonsterNames(value) {
+    const names = Array.isArray(value) ? value : String(value || "").split(",");
+    const deduped = new Map();
+    names.forEach((name) => {
+      const displayName = String(name || "").trim().replace(/\s+/g, " ");
+      if (displayName) deduped.set(displayName.toLowerCase(), displayName);
+    });
+    return Array.from(deduped.values());
+  }
+
+  function isIgnoredMonster(monster) {
+    const name = String(monster?.name || "").trim().toLowerCase();
+    return !!name && config.ignoredMonsterNames.some((ignoredName) => ignoredName.toLowerCase() === name);
   }
 
   function getCombatMovement() {
@@ -3447,7 +3486,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
 
     const playerPosition = normalizePosition(bot.getPlayerPosition());
     return getNearbyMonsters()
-      .filter((monster) => !isTargetSkipped(monster, now) && !shouldGiveUpTarget(monster))
+      .filter((monster) => !isIgnoredMonster(monster) && !isTargetSkipped(monster, now) && !shouldGiveUpTarget(monster))
       .sort((left, right) => {
         const leftDistance = getTileDistance(playerPosition, normalizePosition(left?.getPosition?.() || left?.__position));
         const rightDistance = getTileDistance(playerPosition, normalizePosition(right?.getPosition?.() || right?.__position));
@@ -3456,6 +3495,10 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   }
 
   function shouldGiveUpTarget(target) {
+    if (isIgnoredMonster(target)) {
+      return true;
+    }
+
     const maxTargetDistance = Math.max(1, Number(config.maxTargetDistance) || 8);
     const playerPosition = normalizePosition(bot.getPlayerPosition());
     const targetPosition = normalizePosition(target?.getPosition?.() || target?.__position);
@@ -4002,10 +4045,15 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       nextConfig.maxTargetDistance = Math.max(1, Math.trunc(Number(nextConfig.maxTargetDistance) || config.maxTargetDistance || 8));
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "ignoredMonsterNames")) {
+      nextConfig.ignoredMonsterNames = normalizeMonsterNames(nextConfig.ignoredMonsterNames);
+    }
+
     Object.assign(config, nextConfig);
     config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
     config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
     config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
+    config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
     persistConfig();
     bot.log("auto attack config updated", { ...config });
     return { ...config };
@@ -4085,6 +4133,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       repathMs: 1500,
       waypointTolerance: 0,
       enabled: false,
+      unexpectedMonsterAlertEnabled: true,
       activePresetName: defaultPresetName,
     },
     bot.storage.get(configStorageKey, {})
@@ -4094,6 +4143,20 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
   function normalizePresetName(value) {
     const normalized = String(value || "").trim().replace(/\s+/g, " ");
     return normalized || null;
+  }
+
+  function normalizeMonsterNames(value) {
+    const names = Array.isArray(value) ? value : String(value || "").split(",");
+    const deduped = new Map();
+
+    names.forEach((name) => {
+      const displayName = String(name || "").trim().replace(/\s+/g, " ");
+      if (displayName) {
+        deduped.set(displayName.toLowerCase(), displayName);
+      }
+    });
+
+    return Array.from(deduped.values());
   }
 
   function cloneValue(value) {
@@ -4114,6 +4177,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name,
       route: normalizeRoute(value.route),
       transitions: normalizeTransitions(value.transitions),
+      allowedMonsters: normalizeMonsterNames(value.allowedMonsters),
     };
   }
 
@@ -4130,6 +4194,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
   let route = normalizeRoute(bot.storage.get(routeStorageKey, []));
   let transitions = normalizeTransitions(bot.storage.get(transitionStorageKey, []));
+  let allowedMonsters = [];
   let presets = normalizePresets(bot.storage.get(presetStorageKey, []));
 
   if (!presets.length && (route.length || transitions.length)) {
@@ -4137,6 +4202,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: defaultPresetName,
       route: route.map((waypoint) => cloneValue(waypoint)),
       transitions: transitions.map((transition) => cloneValue(transition)),
+      allowedMonsters: [],
     }];
   }
 
@@ -4173,6 +4239,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
         name: preset.name,
         route: preset.route.map((waypoint) => ({ ...waypoint })),
         transitions: preset.transitions.map((transition) => cloneValue(transition)),
+        allowedMonsters: [...preset.allowedMonsters],
       }))
     );
   }
@@ -4188,7 +4255,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     return config.activePresetName;
   }
 
-  function upsertPreset(name, nextRoute = route, nextTransitions = transitions) {
+  function upsertPreset(name, nextRoute = route, nextTransitions = transitions, nextAllowedMonsters = allowedMonsters) {
     const normalizedName = normalizePresetName(name);
     if (!normalizedName) {
       return null;
@@ -4198,6 +4265,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: normalizedName,
       route: normalizeRoute(nextRoute).map((waypoint) => cloneValue(waypoint)),
       transitions: normalizeTransitions(nextTransitions).map((transition) => cloneValue(transition)),
+      allowedMonsters: normalizeMonsterNames(nextAllowedMonsters),
     };
     const existingIndex = presets.findIndex((entry) => entry.name.toLowerCase() === normalizedName.toLowerCase());
 
@@ -4212,7 +4280,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
   }
 
   function persistActivePreset() {
-    upsertPreset(getActivePresetName(), route, transitions);
+    upsertPreset(getActivePresetName(), route, transitions, allowedMonsters);
     persistLegacyActivePreset();
   }
 
@@ -4224,6 +4292,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
     route = normalizeRoute(preset.route);
     transitions = normalizeTransitions(preset.transitions);
+    allowedMonsters = normalizeMonsterNames(preset.allowedMonsters);
     state.currentIndex = 0;
     state.direction = 1;
     state.pendingTransitionSource = null;
@@ -4320,12 +4389,26 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     return transitions.map((transition) => cloneValue(transition));
   }
 
+  function getAllowedMonsters() {
+    return [...allowedMonsters];
+  }
+
+  function setAllowedMonsters(nextAllowedMonsters) {
+    allowedMonsters = normalizeMonsterNames(nextAllowedMonsters);
+    persistActivePreset();
+    bot.log("cave allowed monsters updated", {
+      preset: getActivePresetName(),
+      allowedMonsters: [...allowedMonsters],
+    });
+    return getAllowedMonsters();
+  }
+
   function persistTransitions() {
     persistActivePreset();
   }
 
   function savePreset(name, options = {}) {
-    const preset = upsertPreset(name, route, transitions);
+    const preset = upsertPreset(name, route, transitions, allowedMonsters);
     if (!preset) {
       bot.log("cave preset name is required");
       return null;
@@ -4345,6 +4428,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: preset.name,
       route: preset.route.map((waypoint) => cloneValue(waypoint)),
       transitions: preset.transitions.map((transition) => cloneValue(transition)),
+      allowedMonsters: [...preset.allowedMonsters],
     };
   }
 
@@ -4364,7 +4448,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       stop();
     }
 
-    const preset = upsertPreset(normalizedName, [], []);
+    const preset = upsertPreset(normalizedName, [], [], []);
     if (!preset) {
       return null;
     }
@@ -4375,6 +4459,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: preset.name,
       route: [],
       transitions: [],
+      allowedMonsters: [],
     };
   }
 
@@ -4399,6 +4484,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       name: preset.name,
       route: getRoute(),
       transitions: getTransitions(),
+      allowedMonsters: getAllowedMonsters(),
     };
   }
 
@@ -5399,6 +5485,36 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     }, config.tickMs);
   }
 
+  function getUnexpectedVisibleMonsters() {
+    if (!config.unexpectedMonsterAlertEnabled || !allowedMonsters.length) {
+      return [];
+    }
+
+    const allowedNames = new Set(allowedMonsters.map((name) => name.toLowerCase()));
+    return (bot.xray?.getVisibleMonsters?.({ sameFloorOnly: true }) || []).filter(
+      (monster) => !allowedNames.has(String(monster?.name || "").trim().toLowerCase())
+    );
+  }
+
+  function stopForUnexpectedMonsters(monsters) {
+    if (!monsters.length) {
+      return false;
+    }
+
+    const names = Array.from(new Set(monsters.map((monster) => monster.name).filter(Boolean)));
+    bot.playAlarm?.();
+    bot.log("unexpected monster detected: cave and attack stopped", {
+      preset: getActivePresetName(),
+      monsters: names,
+      allowedMonsters: [...allowedMonsters],
+    });
+    bot.attack?.stop?.();
+    stop();
+    bot.ui?.refreshAutoAttackStatus?.();
+    bot.ui?.refreshCaveStatus?.();
+    return true;
+  }
+
   function tick() {
     if (!state.running) return;
 
@@ -5407,6 +5523,10 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
       if (!route.length) {
         stop();
+        return;
+      }
+
+      if (stopForUnexpectedMonsters(getUnexpectedVisibleMonsters())) {
         return;
       }
 
@@ -5642,6 +5762,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       config: { ...config },
       route: getRoute(),
       transitions: getTransitions(),
+      allowedMonsters: getAllowedMonsters(),
       presetNames: getPresetNames(),
       activePresetName: getActivePresetName(),
       currentIndex: state.currentIndex,
@@ -5680,6 +5801,8 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     config,
     getRoute,
     getTransitions,
+    getAllowedMonsters,
+    setAllowedMonsters,
     getPresetNames,
     getActivePresetName,
     getCurrentWaypoint,
@@ -7236,6 +7359,11 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (deleteButton) {
       deleteButton.disabled = !presetNames.length || !select?.value;
     }
+
+    const allowedMonstersInput = document.getElementById("minibia-bot-cave-allowed-monsters");
+    if (allowedMonstersInput && document.activeElement !== allowedMonstersInput) {
+      allowedMonstersInput.value = (status?.allowedMonsters || bot.cave?.getAllowedMonsters?.() || []).join(", ");
+    }
   }
 
   function refreshCaveClosestStatus() {
@@ -7522,6 +7650,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         color: #f1e2b8;
         font: 12px/1.35 Verdana, sans-serif;
         user-select: none;
+        max-height: calc(100vh - 32px);
+        display: flex;
+        flex-direction: column;
       }
 
       #minibia-bot-panel {
@@ -7568,6 +7699,11 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         grid-template-columns: minmax(0, 1fr) 280px 240px;
         gap: 12px;
         align-items: start;
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding-right: 4px;
       }
 
       #minibia-bot-panel .mb-body[hidden] {
@@ -7963,9 +8099,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <span>Enable Auto Heal</span>
               </label>
               <div class="mb-field-grid">
-                <label class="mb-field" for="minibia-bot-auto-heal-min-hp">
-                  <span class="mb-field-label">Minimum HP</span>
-                  <input type="number" id="minibia-bot-auto-heal-min-hp" min="0" placeholder="250" />
+                <label class="mb-field" for="minibia-bot-auto-heal-min-hp-percent">
+                  <span class="mb-field-label">Heal HP below (%)</span>
+                  <input type="number" id="minibia-bot-auto-heal-min-hp-percent" min="1" max="100" placeholder="50" />
                 </label>
                 <label class="mb-field" for="minibia-bot-auto-heal-hp-hotkey">
                   <span class="mb-field-label">HP Hotkey (1-12)</span>
@@ -8011,6 +8147,15 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-preset-new">New</button>
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-preset-delete">Delete</button>
               </div>
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-cave-unexpected-monster-alert" />
+                <span>Stop on unexpected monster</span>
+              </label>
+              <label class="mb-field" for="minibia-bot-cave-allowed-monsters">
+                <span class="mb-field-label">Allowed monsters (comma separated)</span>
+                <input type="text" id="minibia-bot-cave-allowed-monsters" placeholder="Cyclops, Cyclops Drone" />
+              </label>
+              <div class="mb-small-note">This list belongs to the selected preset. An unlisted monster stops Cavebot and Auto Attack.</div>
               <div class="mb-actions mb-actions-inline-two">
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-record">Record Spot</button>
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-remove-last">Remove Last</button>
@@ -8052,6 +8197,10 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                   <input type="number" id="minibia-bot-auto-attack-kite-max-distance" min="1" placeholder="5" />
                 </label>
               </div>
+              <label class="mb-field" for="minibia-bot-auto-attack-ignore-monsters">
+                <span class="mb-field-label">Ignore monsters (comma separated)</span>
+                <input type="text" id="minibia-bot-auto-attack-ignore-monsters" placeholder="Rat, Deer" />
+              </label>
               <label class="mb-field" for="minibia-bot-auto-attack-hotkey">
                 <span class="mb-field-label">Target Hotkey (1-12)</span>
                 <input type="number" id="minibia-bot-auto-attack-hotkey" min="1" max="12" placeholder="3" />
@@ -8098,7 +8247,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHasteCooldownInput = panel.querySelector("#minibia-bot-auto-haste-cooldown");
     const equipRingEnabledInput = panel.querySelector("#minibia-bot-equip-ring-enabled");
     const autoHealEnabledInput = panel.querySelector("#minibia-bot-auto-heal-enabled");
-    const autoHealMinHpInput = panel.querySelector("#minibia-bot-auto-heal-min-hp");
+    const autoHealMinHpPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-hp-percent");
     const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
     const autoHealMinManaInput = panel.querySelector("#minibia-bot-auto-heal-min-mana");
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
@@ -8107,6 +8256,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoAttackMovementInput = panel.querySelector("#minibia-bot-auto-attack-movement");
     const autoAttackKiteMinDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-min-distance");
     const autoAttackKiteMaxDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-max-distance");
+    const autoAttackIgnoreMonstersInput = panel.querySelector("#minibia-bot-auto-attack-ignore-monsters");
     const autoAttackHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-hotkey");
     const autoAttackRuneHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-rune-hotkey");
     const talkEnabledInput = panel.querySelector("#minibia-bot-talk-enabled");
@@ -8134,6 +8284,8 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const cavePresetSelect = panel.querySelector("#minibia-bot-cave-preset-select");
     const cavePresetNewButton = panel.querySelector("#minibia-bot-cave-preset-new");
     const cavePresetDeleteButton = panel.querySelector("#minibia-bot-cave-preset-delete");
+    const caveUnexpectedMonsterAlertInput = panel.querySelector("#minibia-bot-cave-unexpected-monster-alert");
+    const caveAllowedMonstersInput = panel.querySelector("#minibia-bot-cave-allowed-monsters");
 
     if (collapseButton) {
       collapseButton.addEventListener("click", () => {
@@ -8364,6 +8516,23 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (caveUnexpectedMonsterAlertInput) {
+      caveUnexpectedMonsterAlertInput.checked = bot.cave?.config?.unexpectedMonsterAlertEnabled !== false;
+      caveUnexpectedMonsterAlertInput.addEventListener("change", () => {
+        bot.cave.updateConfig({
+          unexpectedMonsterAlertEnabled: caveUnexpectedMonsterAlertInput.checked,
+        });
+      });
+    }
+
+    if (caveAllowedMonstersInput) {
+      caveAllowedMonstersInput.value = (bot.cave?.getAllowedMonsters?.() || []).join(", ");
+      caveAllowedMonstersInput.addEventListener("change", () => {
+        bot.cave.setAllowedMonsters(caveAllowedMonstersInput.value);
+        caveAllowedMonstersInput.value = (bot.cave?.getAllowedMonsters?.() || []).join(", ");
+      });
+    }
+
     if (caveRecordButton) {
       caveRecordButton.addEventListener("click", () => {
         bot.cave.addWaypointCurrentSpot();
@@ -8458,12 +8627,12 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
-    if (autoHealMinHpInput) {
-      autoHealMinHpInput.value = String(bot.heal?.config?.minHp ?? 0);
-      autoHealMinHpInput.addEventListener("change", () => {
-        const minHp = Math.max(0, Number(autoHealMinHpInput.value) || 0);
-        autoHealMinHpInput.value = String(minHp);
-        bot.heal.updateConfig({ minHp });
+    if (autoHealMinHpPercentInput) {
+      autoHealMinHpPercentInput.value = String(bot.heal?.config?.minHpPercent ?? 50);
+      autoHealMinHpPercentInput.addEventListener("change", () => {
+        const minHpPercent = Math.min(100, Math.max(1, Number(autoHealMinHpPercentInput.value) || 1));
+        autoHealMinHpPercentInput.value = String(minHpPercent);
+        bot.heal.updateConfig({ minHpPercent });
       });
     }
 
@@ -8497,7 +8666,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (autoHealEnabledInput) {
       autoHealEnabledInput.checked = !!bot.heal?.status?.().running;
       autoHealEnabledInput.addEventListener("change", () => {
-        const minHp = Math.max(0, Number(autoHealMinHpInput?.value) || bot.heal.config.minHp || 0);
+        const minHpPercent = Math.min(100, Math.max(1, Number(autoHealMinHpPercentInput?.value) || bot.heal.config.minHpPercent || 50));
         const hpHotbarSlot = Math.min(
           12,
           Math.max(1, Number(autoHealHpHotkeyInput?.value) || bot.heal.config.hpHotbarSlot || 1)
@@ -8509,7 +8678,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         );
 
         if (autoHealEnabledInput.checked) {
-          bot.heal.start({ minHp, hpHotbarSlot, minMana, manaHotbarSlot });
+          bot.heal.start({ minHpPercent, hpHotbarSlot, minMana, manaHotbarSlot });
         } else {
           bot.heal.stop();
         }
@@ -8552,6 +8721,14 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       autoAttackMovementInput.value = bot.attack?.config?.combatMovement === "kite" ? "kite" : "auto";
       autoAttackMovementInput.addEventListener("change", () => {
         bot.attack.updateConfig({ combatMovement: autoAttackMovementInput.value });
+      });
+    }
+
+    if (autoAttackIgnoreMonstersInput) {
+      autoAttackIgnoreMonstersInput.value = (bot.attack?.config?.ignoredMonsterNames || []).join(", ");
+      autoAttackIgnoreMonstersInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ ignoredMonsterNames: autoAttackIgnoreMonstersInput.value });
+        autoAttackIgnoreMonstersInput.value = (bot.attack?.config?.ignoredMonsterNames || []).join(", ");
       });
     }
 

@@ -34,6 +34,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       kiteMinDistance: 3,
       kiteMaxDistance: 5,
       kiteMoveCooldownMs: 350,
+      ignoredMonsterNames: [],
       enabled: false,
     },
     storedConfig
@@ -45,6 +46,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
   config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
   config.kiteMoveCooldownMs = Math.max(100, Number(config.kiteMoveCooldownMs) || 350);
+  config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -62,6 +64,21 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     return normalized;
+  }
+
+  function normalizeMonsterNames(value) {
+    const names = Array.isArray(value) ? value : String(value || "").split(",");
+    const deduped = new Map();
+    names.forEach((name) => {
+      const displayName = String(name || "").trim().replace(/\s+/g, " ");
+      if (displayName) deduped.set(displayName.toLowerCase(), displayName);
+    });
+    return Array.from(deduped.values());
+  }
+
+  function isIgnoredMonster(monster) {
+    const name = String(monster?.name || "").trim().toLowerCase();
+    return !!name && config.ignoredMonsterNames.some((ignoredName) => ignoredName.toLowerCase() === name);
   }
 
   function getCombatMovement() {
@@ -354,7 +371,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
 
     const playerPosition = normalizePosition(bot.getPlayerPosition());
     return getNearbyMonsters()
-      .filter((monster) => !isTargetSkipped(monster, now) && !shouldGiveUpTarget(monster))
+      .filter((monster) => !isIgnoredMonster(monster) && !isTargetSkipped(monster, now) && !shouldGiveUpTarget(monster))
       .sort((left, right) => {
         const leftDistance = getTileDistance(playerPosition, normalizePosition(left?.getPosition?.() || left?.__position));
         const rightDistance = getTileDistance(playerPosition, normalizePosition(right?.getPosition?.() || right?.__position));
@@ -363,6 +380,10 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   }
 
   function shouldGiveUpTarget(target) {
+    if (isIgnoredMonster(target)) {
+      return true;
+    }
+
     const maxTargetDistance = Math.max(1, Number(config.maxTargetDistance) || 8);
     const playerPosition = normalizePosition(bot.getPlayerPosition());
     const targetPosition = normalizePosition(target?.getPosition?.() || target?.__position);
@@ -909,10 +930,15 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       nextConfig.maxTargetDistance = Math.max(1, Math.trunc(Number(nextConfig.maxTargetDistance) || config.maxTargetDistance || 8));
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "ignoredMonsterNames")) {
+      nextConfig.ignoredMonsterNames = normalizeMonsterNames(nextConfig.ignoredMonsterNames);
+    }
+
     Object.assign(config, nextConfig);
     config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
     config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
     config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
+    config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
     persistConfig();
     bot.log("auto attack config updated", { ...config });
     return { ...config };

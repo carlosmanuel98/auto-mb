@@ -316,6 +316,11 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (deleteButton) {
       deleteButton.disabled = !presetNames.length || !select?.value;
     }
+
+    const allowedMonstersInput = document.getElementById("minibia-bot-cave-allowed-monsters");
+    if (allowedMonstersInput && document.activeElement !== allowedMonstersInput) {
+      allowedMonstersInput.value = (status?.allowedMonsters || bot.cave?.getAllowedMonsters?.() || []).join(", ");
+    }
   }
 
   function refreshCaveClosestStatus() {
@@ -602,6 +607,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         color: #f1e2b8;
         font: 12px/1.35 Verdana, sans-serif;
         user-select: none;
+        max-height: calc(100vh - 32px);
+        display: flex;
+        flex-direction: column;
       }
 
       #minibia-bot-panel {
@@ -648,6 +656,11 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         grid-template-columns: minmax(0, 1fr) 280px 240px;
         gap: 12px;
         align-items: start;
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding-right: 4px;
       }
 
       #minibia-bot-panel .mb-body[hidden] {
@@ -1043,9 +1056,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <span>Enable Auto Heal</span>
               </label>
               <div class="mb-field-grid">
-                <label class="mb-field" for="minibia-bot-auto-heal-min-hp">
-                  <span class="mb-field-label">Minimum HP</span>
-                  <input type="number" id="minibia-bot-auto-heal-min-hp" min="0" placeholder="250" />
+                <label class="mb-field" for="minibia-bot-auto-heal-min-hp-percent">
+                  <span class="mb-field-label">Heal HP below (%)</span>
+                  <input type="number" id="minibia-bot-auto-heal-min-hp-percent" min="1" max="100" placeholder="50" />
                 </label>
                 <label class="mb-field" for="minibia-bot-auto-heal-hp-hotkey">
                   <span class="mb-field-label">HP Hotkey (1-12)</span>
@@ -1091,6 +1104,15 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-preset-new">New</button>
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-preset-delete">Delete</button>
               </div>
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-cave-unexpected-monster-alert" />
+                <span>Stop on unexpected monster</span>
+              </label>
+              <label class="mb-field" for="minibia-bot-cave-allowed-monsters">
+                <span class="mb-field-label">Allowed monsters (comma separated)</span>
+                <input type="text" id="minibia-bot-cave-allowed-monsters" placeholder="Cyclops, Cyclops Drone" />
+              </label>
+              <div class="mb-small-note">This list belongs to the selected preset. An unlisted monster stops Cavebot and Auto Attack.</div>
               <div class="mb-actions mb-actions-inline-two">
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-record">Record Spot</button>
                 <button type="button" class="mb-small-button" id="minibia-bot-cave-remove-last">Remove Last</button>
@@ -1132,6 +1154,10 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                   <input type="number" id="minibia-bot-auto-attack-kite-max-distance" min="1" placeholder="5" />
                 </label>
               </div>
+              <label class="mb-field" for="minibia-bot-auto-attack-ignore-monsters">
+                <span class="mb-field-label">Ignore monsters (comma separated)</span>
+                <input type="text" id="minibia-bot-auto-attack-ignore-monsters" placeholder="Rat, Deer" />
+              </label>
               <label class="mb-field" for="minibia-bot-auto-attack-hotkey">
                 <span class="mb-field-label">Target Hotkey (1-12)</span>
                 <input type="number" id="minibia-bot-auto-attack-hotkey" min="1" max="12" placeholder="3" />
@@ -1178,7 +1204,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHasteCooldownInput = panel.querySelector("#minibia-bot-auto-haste-cooldown");
     const equipRingEnabledInput = panel.querySelector("#minibia-bot-equip-ring-enabled");
     const autoHealEnabledInput = panel.querySelector("#minibia-bot-auto-heal-enabled");
-    const autoHealMinHpInput = panel.querySelector("#minibia-bot-auto-heal-min-hp");
+    const autoHealMinHpPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-hp-percent");
     const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
     const autoHealMinManaInput = panel.querySelector("#minibia-bot-auto-heal-min-mana");
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
@@ -1187,6 +1213,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoAttackMovementInput = panel.querySelector("#minibia-bot-auto-attack-movement");
     const autoAttackKiteMinDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-min-distance");
     const autoAttackKiteMaxDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-max-distance");
+    const autoAttackIgnoreMonstersInput = panel.querySelector("#minibia-bot-auto-attack-ignore-monsters");
     const autoAttackHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-hotkey");
     const autoAttackRuneHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-rune-hotkey");
     const talkEnabledInput = panel.querySelector("#minibia-bot-talk-enabled");
@@ -1214,6 +1241,8 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const cavePresetSelect = panel.querySelector("#minibia-bot-cave-preset-select");
     const cavePresetNewButton = panel.querySelector("#minibia-bot-cave-preset-new");
     const cavePresetDeleteButton = panel.querySelector("#minibia-bot-cave-preset-delete");
+    const caveUnexpectedMonsterAlertInput = panel.querySelector("#minibia-bot-cave-unexpected-monster-alert");
+    const caveAllowedMonstersInput = panel.querySelector("#minibia-bot-cave-allowed-monsters");
 
     if (collapseButton) {
       collapseButton.addEventListener("click", () => {
@@ -1444,6 +1473,23 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (caveUnexpectedMonsterAlertInput) {
+      caveUnexpectedMonsterAlertInput.checked = bot.cave?.config?.unexpectedMonsterAlertEnabled !== false;
+      caveUnexpectedMonsterAlertInput.addEventListener("change", () => {
+        bot.cave.updateConfig({
+          unexpectedMonsterAlertEnabled: caveUnexpectedMonsterAlertInput.checked,
+        });
+      });
+    }
+
+    if (caveAllowedMonstersInput) {
+      caveAllowedMonstersInput.value = (bot.cave?.getAllowedMonsters?.() || []).join(", ");
+      caveAllowedMonstersInput.addEventListener("change", () => {
+        bot.cave.setAllowedMonsters(caveAllowedMonstersInput.value);
+        caveAllowedMonstersInput.value = (bot.cave?.getAllowedMonsters?.() || []).join(", ");
+      });
+    }
+
     if (caveRecordButton) {
       caveRecordButton.addEventListener("click", () => {
         bot.cave.addWaypointCurrentSpot();
@@ -1538,12 +1584,12 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
-    if (autoHealMinHpInput) {
-      autoHealMinHpInput.value = String(bot.heal?.config?.minHp ?? 0);
-      autoHealMinHpInput.addEventListener("change", () => {
-        const minHp = Math.max(0, Number(autoHealMinHpInput.value) || 0);
-        autoHealMinHpInput.value = String(minHp);
-        bot.heal.updateConfig({ minHp });
+    if (autoHealMinHpPercentInput) {
+      autoHealMinHpPercentInput.value = String(bot.heal?.config?.minHpPercent ?? 50);
+      autoHealMinHpPercentInput.addEventListener("change", () => {
+        const minHpPercent = Math.min(100, Math.max(1, Number(autoHealMinHpPercentInput.value) || 1));
+        autoHealMinHpPercentInput.value = String(minHpPercent);
+        bot.heal.updateConfig({ minHpPercent });
       });
     }
 
@@ -1577,7 +1623,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (autoHealEnabledInput) {
       autoHealEnabledInput.checked = !!bot.heal?.status?.().running;
       autoHealEnabledInput.addEventListener("change", () => {
-        const minHp = Math.max(0, Number(autoHealMinHpInput?.value) || bot.heal.config.minHp || 0);
+        const minHpPercent = Math.min(100, Math.max(1, Number(autoHealMinHpPercentInput?.value) || bot.heal.config.minHpPercent || 50));
         const hpHotbarSlot = Math.min(
           12,
           Math.max(1, Number(autoHealHpHotkeyInput?.value) || bot.heal.config.hpHotbarSlot || 1)
@@ -1589,7 +1635,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         );
 
         if (autoHealEnabledInput.checked) {
-          bot.heal.start({ minHp, hpHotbarSlot, minMana, manaHotbarSlot });
+          bot.heal.start({ minHpPercent, hpHotbarSlot, minMana, manaHotbarSlot });
         } else {
           bot.heal.stop();
         }
@@ -1632,6 +1678,14 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       autoAttackMovementInput.value = bot.attack?.config?.combatMovement === "kite" ? "kite" : "auto";
       autoAttackMovementInput.addEventListener("change", () => {
         bot.attack.updateConfig({ combatMovement: autoAttackMovementInput.value });
+      });
+    }
+
+    if (autoAttackIgnoreMonstersInput) {
+      autoAttackIgnoreMonstersInput.value = (bot.attack?.config?.ignoredMonsterNames || []).join(", ");
+      autoAttackIgnoreMonstersInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ ignoredMonsterNames: autoAttackIgnoreMonstersInput.value });
+        autoAttackIgnoreMonstersInput.value = (bot.attack?.config?.ignoredMonsterNames || []).join(", ");
       });
     }
 

@@ -20,6 +20,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       healRetryMs: 200,
       healConfirmMs: 250,
       minHp: 250,
+      minHpPercent: 50,
       hpHotbarSlot: 1,
       minMana: 150,
       manaHotbarSlot: 2,
@@ -27,6 +28,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     },
     bot.storage.get(configStorageKey, {})
   );
+  config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -122,7 +124,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
 
     return (
       hp.current > 0 &&
-      hp.current <= Math.max(0, Number(config.minHp) || 0) &&
+      hp.max > 0 &&
+      (hp.current / hp.max) * 100 <= config.minHpPercent &&
       now - state.lastHpHealAt >= config.healCooldownMs &&
       now - state.lastHpAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
@@ -155,7 +158,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
         hpBefore: Number(stats.hp?.current ?? 0),
         manaBefore: Number(stats.mana?.current ?? 0),
       };
-      bot.log("pressed hp heal hotkey", { slot, minHp: config.minHp });
+      bot.log("pressed hp heal hotkey", { slot, minHpPercent: config.minHpPercent });
     }
 
     return clicked;
@@ -282,6 +285,10 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       nextConfig.minHp = Math.max(0, Number(nextConfig.minHp) || 0);
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "minHpPercent")) {
+      nextConfig.minHpPercent = Math.min(100, Math.max(1, Number(nextConfig.minHpPercent) || 1));
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "minMana")) {
       nextConfig.minMana = Math.max(0, Number(nextConfig.minMana) || 0);
     }
@@ -295,6 +302,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     }
 
     Object.assign(config, nextConfig);
+    config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };
