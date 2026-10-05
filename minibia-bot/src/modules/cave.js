@@ -1411,13 +1411,14 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
     const names = Array.from(new Set(monsters.map((monster) => monster.name).filter(Boolean)));
     bot.playAlarm?.();
+    bot.setStopReason?.("Unexpected monster", { monsters: names, preset: getActivePresetName() });
     bot.log("unexpected monster detected: cave and attack stopped", {
       preset: getActivePresetName(),
       monsters: names,
       allowedMonsters: [...allowedMonsters],
     });
     bot.attack?.stop?.();
-    stop();
+    stop({ reason: `Unexpected monster: ${names.join(", ") || "unknown"}` });
     bot.ui?.refreshAutoAttackStatus?.();
     bot.ui?.refreshCaveStatus?.();
     return true;
@@ -1542,6 +1543,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
     const position = normalizePosition(bot.getPlayerPosition());
     state.running = true;
+    bot.clearStopReason?.();
     state.currentIndex = findClosestWaypointIndex(position);
     state.direction = state.currentIndex >= route.length - 1 ? -1 : 1;
     if (route.length <= 1) {
@@ -1575,6 +1577,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       persistConfig();
     }
     state.pausedForCombat = false;
+    bot.setStopReason?.(options.reason || "Cavebot stopped");
     bot.log("cave bot stopped");
     return true;
   }

@@ -316,6 +316,18 @@ window.__minibiaBotBundle.createBot = function createBot() {
     log(...args) {
       console.log("[minibia-bot]", ...args);
     },
+    lastStopReason: null,
+    setStopReason(reason, details = {}) {
+      this.lastStopReason = {
+        reason: String(reason || "Stopped"),
+        details: { ...details },
+        at: Date.now(),
+      };
+      return this.lastStopReason;
+    },
+    clearStopReason() {
+      this.lastStopReason = null;
+    },
     storage: {
       get(key, fallback = null) {
         try {
@@ -1348,7 +1360,9 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       return false;
     }
 
-    const stoppedCave = !!bot.cave?.stop?.();
+    const reason = `NPC detected: ${npcs.map((npc) => npc.name).filter(Boolean).join(", ") || "unknown"}`;
+    bot.setStopReason?.(reason, { npcs: npcs.map((npc) => npc.name) });
+    const stoppedCave = !!bot.cave?.stop?.({ reason });
     const stoppedAttack = !!bot.attack?.stop?.();
     bot.log("npc detected: automation stopped", {
       npcs: npcs.map((npc) => npc.name),
@@ -1569,6 +1583,8 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
 
   function triggerGameMasterKillSwitch(players) {
     const detectedPlayers = (players || []).map((player) => player?.name).filter(Boolean);
+    const reason = `GM detected: ${detectedPlayers.join(", ") || "unknown"}`;
+    bot.setStopReason?.(reason, { players: detectedPlayers });
 
     bot.playAlarm?.();
     bot.log("game master kill switch triggered", { players: detectedPlayers });
@@ -1590,7 +1606,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     }
 
     if (bot.cave?.stop) {
-      bot.cave.stop();
+      bot.cave.stop({ reason });
     }
 
     if (bot.attack?.stop) {
@@ -2169,12 +2185,14 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       minHpPercent: 50,
       hpHotbarSlot: 1,
       minMana: 150,
+      minManaPercent: 50,
       manaHotbarSlot: 2,
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
+  config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -2283,7 +2301,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     if (!mana || !slot || state.pendingManaAttempt || state.pendingHpAttempt) return false;
 
     return (
-      mana.current <= Math.max(0, Number(config.minMana) || 0) &&
+      mana.max > 0 &&
+      (mana.current / mana.max) * 100 <= config.minManaPercent &&
       now - state.lastManaHealAt >= config.healCooldownMs &&
       now - state.lastManaAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
@@ -2325,7 +2344,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
         hpBefore: Number(stats.hp?.current ?? 0),
         manaBefore: Number(stats.mana?.current ?? 0),
       };
-      bot.log("pressed mana heal hotkey", { slot, minMana: config.minMana });
+      bot.log("pressed mana heal hotkey", { slot, minManaPercent: config.minManaPercent });
     }
 
     return clicked;
@@ -2439,6 +2458,10 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       nextConfig.minMana = Math.max(0, Number(nextConfig.minMana) || 0);
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "minManaPercent")) {
+      nextConfig.minManaPercent = Math.min(100, Math.max(1, Number(nextConfig.minManaPercent) || 1));
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "healRetryMs")) {
       nextConfig.healRetryMs = Math.max(50, Number(nextConfig.healRetryMs) || 50);
     }
@@ -2449,6 +2472,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
 
     Object.assign(config, nextConfig);
     config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
+    config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };
@@ -5503,13 +5527,14 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
     const names = Array.from(new Set(monsters.map((monster) => monster.name).filter(Boolean)));
     bot.playAlarm?.();
+    bot.setStopReason?.("Unexpected monster", { monsters: names, preset: getActivePresetName() });
     bot.log("unexpected monster detected: cave and attack stopped", {
       preset: getActivePresetName(),
       monsters: names,
       allowedMonsters: [...allowedMonsters],
     });
     bot.attack?.stop?.();
-    stop();
+    stop({ reason: `Unexpected monster: ${names.join(", ") || "unknown"}` });
     bot.ui?.refreshAutoAttackStatus?.();
     bot.ui?.refreshCaveStatus?.();
     return true;
@@ -5634,6 +5659,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
 
     const position = normalizePosition(bot.getPlayerPosition());
     state.running = true;
+    bot.clearStopReason?.();
     state.currentIndex = findClosestWaypointIndex(position);
     state.direction = state.currentIndex >= route.length - 1 ? -1 : 1;
     if (route.length <= 1) {
@@ -5667,6 +5693,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       persistConfig();
     }
     state.pausedForCombat = false;
+    bot.setStopReason?.(options.reason || "Cavebot stopped");
     bot.log("cave bot stopped");
     return true;
   }
@@ -7589,7 +7616,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
 
     let dragState = null;
 
-    const onMouseMove = (event) => {
+    const onPointerMove = (event) => {
       if (!dragState) return;
 
       const next = clampPanelPosition(
@@ -7603,7 +7630,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       panel.style.right = "auto";
     };
 
-    const onMouseUp = () => {
+    const onPointerUp = () => {
       if (!dragState) return;
 
       dragState = null;
@@ -7611,8 +7638,8 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       savePanelPosition({ left: rect.left, top: rect.top }, key);
     };
 
-    handle.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
 
       const rect = panel.getBoundingClientRect();
       dragState = {
@@ -7620,15 +7647,18 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         offsetY: event.clientY - rect.top,
       };
 
+      handle.setPointerCapture?.(event.pointerId);
       event.preventDefault();
     });
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
     bot.addCleanup(() => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     });
   }
 
@@ -7671,6 +7701,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         letter-spacing: 0.04em;
         text-transform: uppercase;
         cursor: move;
+        touch-action: none;
       }
 
       #minibia-bot-panel .mb-titlebar {
@@ -8107,9 +8138,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                   <span class="mb-field-label">HP Hotkey (1-12)</span>
                   <input type="number" id="minibia-bot-auto-heal-hp-hotkey" min="1" max="12" placeholder="1" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-heal-min-mana">
-                  <span class="mb-field-label">Minimum Mana</span>
-                  <input type="number" id="minibia-bot-auto-heal-min-mana" min="0" placeholder="150" />
+                <label class="mb-field" for="minibia-bot-auto-heal-min-mana-percent">
+                  <span class="mb-field-label">Heal mana below (%)</span>
+                  <input type="number" id="minibia-bot-auto-heal-min-mana-percent" min="1" max="100" placeholder="50" />
                 </label>
                 <label class="mb-field" for="minibia-bot-auto-heal-mana-hotkey">
                   <span class="mb-field-label">Mana Hotkey (1-12)</span>
@@ -8249,7 +8280,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHealEnabledInput = panel.querySelector("#minibia-bot-auto-heal-enabled");
     const autoHealMinHpPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-hp-percent");
     const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
-    const autoHealMinManaInput = panel.querySelector("#minibia-bot-auto-heal-min-mana");
+    const autoHealMinManaPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-mana-percent");
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
     const autoAttackEnabledInput = panel.querySelector("#minibia-bot-auto-attack-enabled");
     const autoAttackMeleeInput = panel.querySelector("#minibia-bot-auto-attack-melee");
@@ -8645,12 +8676,12 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
-    if (autoHealMinManaInput) {
-      autoHealMinManaInput.value = String(bot.heal?.config?.minMana ?? 0);
-      autoHealMinManaInput.addEventListener("change", () => {
-        const minMana = Math.max(0, Number(autoHealMinManaInput.value) || 0);
-        autoHealMinManaInput.value = String(minMana);
-        bot.heal.updateConfig({ minMana });
+    if (autoHealMinManaPercentInput) {
+      autoHealMinManaPercentInput.value = String(bot.heal?.config?.minManaPercent ?? 50);
+      autoHealMinManaPercentInput.addEventListener("change", () => {
+        const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput.value) || 1));
+        autoHealMinManaPercentInput.value = String(minManaPercent);
+        bot.heal.updateConfig({ minManaPercent });
       });
     }
 
@@ -8671,14 +8702,14 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
           12,
           Math.max(1, Number(autoHealHpHotkeyInput?.value) || bot.heal.config.hpHotbarSlot || 1)
         );
-        const minMana = Math.max(0, Number(autoHealMinManaInput?.value) || bot.heal.config.minMana || 0);
+        const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput?.value) || bot.heal.config.minManaPercent || 50));
         const manaHotbarSlot = Math.min(
           12,
           Math.max(1, Number(autoHealManaHotkeyInput?.value) || bot.heal.config.manaHotbarSlot || 1)
         );
 
         if (autoHealEnabledInput.checked) {
-          bot.heal.start({ minHpPercent, hpHotbarSlot, minMana, manaHotbarSlot });
+          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot });
         } else {
           bot.heal.stop();
         }

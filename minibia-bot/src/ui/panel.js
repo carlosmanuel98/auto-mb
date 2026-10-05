@@ -546,7 +546,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
 
     let dragState = null;
 
-    const onMouseMove = (event) => {
+    const onPointerMove = (event) => {
       if (!dragState) return;
 
       const next = clampPanelPosition(
@@ -560,7 +560,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       panel.style.right = "auto";
     };
 
-    const onMouseUp = () => {
+    const onPointerUp = () => {
       if (!dragState) return;
 
       dragState = null;
@@ -568,8 +568,8 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       savePanelPosition({ left: rect.left, top: rect.top }, key);
     };
 
-    handle.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
 
       const rect = panel.getBoundingClientRect();
       dragState = {
@@ -577,15 +577,18 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         offsetY: event.clientY - rect.top,
       };
 
+      handle.setPointerCapture?.(event.pointerId);
       event.preventDefault();
     });
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
     bot.addCleanup(() => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     });
   }
 
@@ -628,6 +631,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         letter-spacing: 0.04em;
         text-transform: uppercase;
         cursor: move;
+        touch-action: none;
       }
 
       #minibia-bot-panel .mb-titlebar {
@@ -1064,9 +1068,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                   <span class="mb-field-label">HP Hotkey (1-12)</span>
                   <input type="number" id="minibia-bot-auto-heal-hp-hotkey" min="1" max="12" placeholder="1" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-heal-min-mana">
-                  <span class="mb-field-label">Minimum Mana</span>
-                  <input type="number" id="minibia-bot-auto-heal-min-mana" min="0" placeholder="150" />
+                <label class="mb-field" for="minibia-bot-auto-heal-min-mana-percent">
+                  <span class="mb-field-label">Heal mana below (%)</span>
+                  <input type="number" id="minibia-bot-auto-heal-min-mana-percent" min="1" max="100" placeholder="50" />
                 </label>
                 <label class="mb-field" for="minibia-bot-auto-heal-mana-hotkey">
                   <span class="mb-field-label">Mana Hotkey (1-12)</span>
@@ -1206,7 +1210,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHealEnabledInput = panel.querySelector("#minibia-bot-auto-heal-enabled");
     const autoHealMinHpPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-hp-percent");
     const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
-    const autoHealMinManaInput = panel.querySelector("#minibia-bot-auto-heal-min-mana");
+    const autoHealMinManaPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-mana-percent");
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
     const autoAttackEnabledInput = panel.querySelector("#minibia-bot-auto-attack-enabled");
     const autoAttackMeleeInput = panel.querySelector("#minibia-bot-auto-attack-melee");
@@ -1602,12 +1606,12 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
-    if (autoHealMinManaInput) {
-      autoHealMinManaInput.value = String(bot.heal?.config?.minMana ?? 0);
-      autoHealMinManaInput.addEventListener("change", () => {
-        const minMana = Math.max(0, Number(autoHealMinManaInput.value) || 0);
-        autoHealMinManaInput.value = String(minMana);
-        bot.heal.updateConfig({ minMana });
+    if (autoHealMinManaPercentInput) {
+      autoHealMinManaPercentInput.value = String(bot.heal?.config?.minManaPercent ?? 50);
+      autoHealMinManaPercentInput.addEventListener("change", () => {
+        const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput.value) || 1));
+        autoHealMinManaPercentInput.value = String(minManaPercent);
+        bot.heal.updateConfig({ minManaPercent });
       });
     }
 
@@ -1628,14 +1632,14 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
           12,
           Math.max(1, Number(autoHealHpHotkeyInput?.value) || bot.heal.config.hpHotbarSlot || 1)
         );
-        const minMana = Math.max(0, Number(autoHealMinManaInput?.value) || bot.heal.config.minMana || 0);
+        const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput?.value) || bot.heal.config.minManaPercent || 50));
         const manaHotbarSlot = Math.min(
           12,
           Math.max(1, Number(autoHealManaHotkeyInput?.value) || bot.heal.config.manaHotbarSlot || 1)
         );
 
         if (autoHealEnabledInput.checked) {
-          bot.heal.start({ minHpPercent, hpHotbarSlot, minMana, manaHotbarSlot });
+          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot });
         } else {
           bot.heal.stop();
         }

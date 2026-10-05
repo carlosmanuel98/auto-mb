@@ -316,6 +316,18 @@ window.__minibiaBotBundle.createBot = function createBot() {
     log(...args) {
       console.log("[minibia-bot]", ...args);
     },
+    lastStopReason: null,
+    setStopReason(reason, details = {}) {
+      this.lastStopReason = {
+        reason: String(reason || "Stopped"),
+        details: { ...details },
+        at: Date.now(),
+      };
+      return this.lastStopReason;
+    },
+    clearStopReason() {
+      this.lastStopReason = null;
+    },
     storage: {
       get(key, fallback = null) {
         try {

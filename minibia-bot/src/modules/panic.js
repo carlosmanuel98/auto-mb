@@ -235,7 +235,9 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       return false;
     }
 
-    const stoppedCave = !!bot.cave?.stop?.();
+    const reason = `NPC detected: ${npcs.map((npc) => npc.name).filter(Boolean).join(", ") || "unknown"}`;
+    bot.setStopReason?.(reason, { npcs: npcs.map((npc) => npc.name) });
+    const stoppedCave = !!bot.cave?.stop?.({ reason });
     const stoppedAttack = !!bot.attack?.stop?.();
     bot.log("npc detected: automation stopped", {
       npcs: npcs.map((npc) => npc.name),
@@ -456,6 +458,8 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
 
   function triggerGameMasterKillSwitch(players) {
     const detectedPlayers = (players || []).map((player) => player?.name).filter(Boolean);
+    const reason = `GM detected: ${detectedPlayers.join(", ") || "unknown"}`;
+    bot.setStopReason?.(reason, { players: detectedPlayers });
 
     bot.playAlarm?.();
     bot.log("game master kill switch triggered", { players: detectedPlayers });
@@ -477,7 +481,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     }
 
     if (bot.cave?.stop) {
-      bot.cave.stop();
+      bot.cave.stop({ reason });
     }
 
     if (bot.attack?.stop) {

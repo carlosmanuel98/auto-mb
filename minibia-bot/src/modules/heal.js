@@ -23,12 +23,14 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       minHpPercent: 50,
       hpHotbarSlot: 1,
       minMana: 150,
+      minManaPercent: 50,
       manaHotbarSlot: 2,
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
+  config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -137,7 +139,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     if (!mana || !slot || state.pendingManaAttempt || state.pendingHpAttempt) return false;
 
     return (
-      mana.current <= Math.max(0, Number(config.minMana) || 0) &&
+      mana.max > 0 &&
+      (mana.current / mana.max) * 100 <= config.minManaPercent &&
       now - state.lastManaHealAt >= config.healCooldownMs &&
       now - state.lastManaAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
@@ -179,7 +182,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
         hpBefore: Number(stats.hp?.current ?? 0),
         manaBefore: Number(stats.mana?.current ?? 0),
       };
-      bot.log("pressed mana heal hotkey", { slot, minMana: config.minMana });
+      bot.log("pressed mana heal hotkey", { slot, minManaPercent: config.minManaPercent });
     }
 
     return clicked;
@@ -293,6 +296,10 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       nextConfig.minMana = Math.max(0, Number(nextConfig.minMana) || 0);
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "minManaPercent")) {
+      nextConfig.minManaPercent = Math.min(100, Math.max(1, Number(nextConfig.minManaPercent) || 1));
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "healRetryMs")) {
       nextConfig.healRetryMs = Math.max(50, Number(nextConfig.healRetryMs) || 50);
     }
@@ -303,6 +310,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
 
     Object.assign(config, nextConfig);
     config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
+    config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };
