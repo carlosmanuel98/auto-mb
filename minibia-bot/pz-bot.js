@@ -2499,6 +2499,182 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
 };
 window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
+window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(bot) {
+  const configStorageKey = "minibiaBot.sio.config";
+  const state = {
+    running: false,
+    timerId: null,
+    lastCastAt: 0,
+  };
+
+  const config = Object.assign(
+    {
+      tickMs: 250,
+      targetName: "",
+      spellWords: "exura sio",
+      minHpPercent: 50,
+      cooldownMs: 1000,
+      enabled: false,
+    },
+    bot.storage.get(configStorageKey, {})
+  );
+  config.tickMs = 250;
+  config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
+  config.cooldownMs = Math.max(0, Number(config.cooldownMs) || 0);
+
+  function persistConfig() {
+    bot.storage.set(configStorageKey, { ...config });
+  }
+
+  function normalizeName(name) {
+    return String(name || "").trim().toLowerCase();
+  }
+
+  function getTargetPlayer() {
+    const targetName = normalizeName(config.targetName);
+    if (!targetName) {
+      return null;
+    }
+
+    return (bot.xray?.getVisiblePlayers?.({ sameFloorOnly: true }) || []).find(
+      (player) => normalizeName(player?.name) === targetName
+    ) || null;
+  }
+
+  function getHealthPercent(player) {
+    const directPercent = Number(player?.getHealthPercentage?.());
+    if (Number.isFinite(directPercent)) {
+      return Math.min(100, Math.max(0, directPercent));
+    }
+
+    const current = Number(player?.state?.health ?? player?.health ?? player?.currentHealth);
+    const max = Number(player?.maxHealth ?? player?.state?.maxHealth);
+    if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0) {
+      return null;
+    }
+
+    return Math.min(100, Math.max(0, (current / max) * 100));
+  }
+
+  function getSpellText(player) {
+    const targetName = String(player?.name || config.targetName || "").trim();
+    const words = String(config.spellWords || "").trim();
+    if (!words || !targetName) {
+      return null;
+    }
+
+    return words.includes("{name}")
+      ? words.replaceAll("{name}", targetName)
+      : `${words} "${targetName}"`;
+  }
+
+  function tryCastSio(now = Date.now()) {
+    if (!config.enabled || now - state.lastCastAt < config.cooldownMs) {
+      return false;
+    }
+
+    const target = getTargetPlayer();
+    const healthPercent = getHealthPercent(target);
+    if (!target || healthPercent == null || healthPercent > config.minHpPercent) {
+      return false;
+    }
+
+    const spellText = getSpellText(target);
+    if (!spellText || !bot.sendChat(spellText)) {
+      return false;
+    }
+
+    state.lastCastAt = now;
+    bot.log("cast sio", { target: target.name, healthPercent, spellText });
+    return true;
+  }
+
+  function scheduleNextTick() {
+    if (!state.running) return;
+    state.timerId = window.setTimeout(tick, config.tickMs);
+  }
+
+  function tick() {
+    if (!state.running) return;
+
+    try {
+      tryCastSio();
+    } catch (error) {
+      bot.log("auto sio tick failed", error?.message || error);
+    } finally {
+      scheduleNextTick();
+    }
+  }
+
+  function start(overrides = {}) {
+    Object.assign(config, overrides, { enabled: true });
+    config.tickMs = 250;
+    persistConfig();
+
+    if (state.running) {
+      return false;
+    }
+
+    state.running = true;
+    bot.log("auto sio started", { ...config });
+    tick();
+    return true;
+  }
+
+  function stop(options = {}) {
+    const shouldPersistEnabled = options.persistEnabled !== false;
+    state.running = false;
+    if (state.timerId != null) {
+      window.clearTimeout(state.timerId);
+      state.timerId = null;
+    }
+
+    if (shouldPersistEnabled) {
+      config.enabled = false;
+      persistConfig();
+    }
+    return true;
+  }
+
+  function updateConfig(nextConfig = {}) {
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "targetName")) {
+      nextConfig.targetName = String(nextConfig.targetName || "").trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "spellWords")) {
+      nextConfig.spellWords = String(nextConfig.spellWords || "").trim() || config.spellWords;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "minHpPercent")) {
+      nextConfig.minHpPercent = Math.min(100, Math.max(1, Number(nextConfig.minHpPercent) || 1));
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "cooldownMs")) {
+      nextConfig.cooldownMs = Math.max(0, Number(nextConfig.cooldownMs) || 0);
+    }
+
+    Object.assign(config, nextConfig);
+    config.tickMs = 250;
+    persistConfig();
+    return { ...config };
+  }
+
+  function status() {
+    const target = getTargetPlayer();
+    return {
+      running: state.running,
+      config: { ...config },
+      target: target ? { name: target.name, healthPercent: getHealthPercent(target) } : null,
+      lastCastAt: state.lastCastAt,
+    };
+  }
+
+  if (config.enabled) {
+    start();
+  }
+
+  bot.addCleanup(() => stop({ persistEnabled: false }));
+  bot.sio = { start, stop, status, updateConfig, tryCastSio, getTargetPlayer, config };
+};
+window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+
 window.__minibiaBotBundle.installAutoInvisibleModule = function installAutoInvisibleModule(bot) {
   const configStorageKey = "minibiaBot.invisible.config";
   const INVISIBLE_CONDITION_ID = 4;
@@ -8164,6 +8340,28 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
               <div class="mb-small-note">It will not reply to itself and will not admit it is a bot.</div>
             </div>
           </div>
+          <div class="mb-section mb-column-section">
+            <div class="mb-label">Auto Sio</div>
+            <div class="mb-stack">
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-auto-sio-enabled" />
+                <span>Enable Auto Sio</span>
+              </label>
+              <input type="text" id="minibia-bot-auto-sio-target" placeholder="Player name" />
+              <div class="mb-field-grid">
+                <label class="mb-field" for="minibia-bot-auto-sio-hp-percent">
+                  <span class="mb-field-label">Heal below (%)</span>
+                  <input type="number" id="minibia-bot-auto-sio-hp-percent" min="1" max="100" placeholder="50" />
+                </label>
+                <label class="mb-field" for="minibia-bot-auto-sio-cooldown">
+                  <span class="mb-field-label">Cooldown (ms)</span>
+                  <input type="number" id="minibia-bot-auto-sio-cooldown" min="0" placeholder="1000" />
+                </label>
+              </div>
+              <input type="text" id="minibia-bot-auto-sio-spell" placeholder="exura sio" />
+              <div class="mb-small-note">Casts only while the named player is visible on the same floor.</div>
+            </div>
+          </div>
         </div>
         <div class="mb-cave-column">
           <div class="mb-section mb-column-section">
@@ -8282,6 +8480,11 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
     const autoHealMinManaPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-mana-percent");
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
+    const autoSioEnabledInput = panel.querySelector("#minibia-bot-auto-sio-enabled");
+    const autoSioTargetInput = panel.querySelector("#minibia-bot-auto-sio-target");
+    const autoSioHpPercentInput = panel.querySelector("#minibia-bot-auto-sio-hp-percent");
+    const autoSioCooldownInput = panel.querySelector("#minibia-bot-auto-sio-cooldown");
+    const autoSioSpellInput = panel.querySelector("#minibia-bot-auto-sio-spell");
     const autoAttackEnabledInput = panel.querySelector("#minibia-bot-auto-attack-enabled");
     const autoAttackMeleeInput = panel.querySelector("#minibia-bot-auto-attack-melee");
     const autoAttackMovementInput = panel.querySelector("#minibia-bot-auto-attack-movement");
@@ -8718,6 +8921,46 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (autoSioTargetInput) {
+      autoSioTargetInput.value = bot.sio?.config?.targetName || "";
+      autoSioTargetInput.addEventListener("change", () => bot.sio.updateConfig({ targetName: autoSioTargetInput.value }));
+    }
+    if (autoSioHpPercentInput) {
+      autoSioHpPercentInput.value = String(bot.sio?.config?.minHpPercent ?? 50);
+      autoSioHpPercentInput.addEventListener("change", () => {
+        const minHpPercent = Math.min(100, Math.max(1, Number(autoSioHpPercentInput.value) || 1));
+        autoSioHpPercentInput.value = String(minHpPercent);
+        bot.sio.updateConfig({ minHpPercent });
+      });
+    }
+    if (autoSioCooldownInput) {
+      autoSioCooldownInput.value = String(bot.sio?.config?.cooldownMs ?? 1000);
+      autoSioCooldownInput.addEventListener("change", () => {
+        const cooldownMs = Math.max(0, Number(autoSioCooldownInput.value) || 0);
+        autoSioCooldownInput.value = String(cooldownMs);
+        bot.sio.updateConfig({ cooldownMs });
+      });
+    }
+    if (autoSioSpellInput) {
+      autoSioSpellInput.value = bot.sio?.config?.spellWords || "exura sio";
+      autoSioSpellInput.addEventListener("change", () => bot.sio.updateConfig({ spellWords: autoSioSpellInput.value }));
+    }
+    if (autoSioEnabledInput) {
+      autoSioEnabledInput.checked = !!bot.sio?.status?.().running;
+      autoSioEnabledInput.addEventListener("change", () => {
+        if (autoSioEnabledInput.checked) {
+          bot.sio.start({
+            targetName: autoSioTargetInput?.value || "",
+            minHpPercent: Math.min(100, Math.max(1, Number(autoSioHpPercentInput?.value) || 50)),
+            cooldownMs: Math.max(0, Number(autoSioCooldownInput?.value) || 0),
+            spellWords: autoSioSpellInput?.value || "exura sio",
+          });
+        } else {
+          bot.sio.stop();
+        }
+      });
+    }
+
     if (autoAttackHotkeyInput) {
       autoAttackHotkeyInput.value = String(bot.attack?.config?.targetHotbarSlot ?? 3);
       autoAttackHotkeyInput.addEventListener("change", () => {
@@ -8997,6 +9240,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
   const persistedEnabledModules = [
     ["rune", "minibiaBot.rune.config"],
     ["heal", "minibiaBot.heal.config"],
+    ["sio", "minibiaBot.sio.config"],
     ["invisible", "minibiaBot.invisible.config"],
     ["magicShield", "minibiaBot.magicShield.config"],
     ["haste", "minibiaBot.haste.config"],
@@ -9057,6 +9301,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     currentBundle.installPanicModule(bot);
     currentBundle.installRuneModule(bot);
     currentBundle.installHealModule(bot);
+    currentBundle.installAutoSioModule(bot);
     currentBundle.installAutoInvisibleModule(bot);
     currentBundle.installAutoMagicShieldModule(bot);
     currentBundle.installAutoHasteModule(bot);
@@ -9081,6 +9326,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       panic: bot.panic.status(),
       rune: bot.rune.status(),
       heal: bot.heal.status(),
+      sio: bot.sio.status(),
       invisible: bot.invisible.status(),
       magicShield: bot.magicShield.status(),
       haste: bot.haste.status(),
@@ -9096,7 +9342,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
 
     console.log("[minibia-bot] ready", {
       version: bot.version,
-      modules: ["pz", "xray", "panic", "rune", "heal", "invisible", "magicShield", "haste", "attack", "cave", "equipRing", "eat", "talk", "ui"],
+      modules: ["pz", "xray", "panic", "rune", "heal", "sio", "invisible", "magicShield", "haste", "attack", "cave", "equipRing", "eat", "talk", "ui"],
     });
     console.log("minibiaBot.reload()");
     console.log("minibiaBot.xray.status()");

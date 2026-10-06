@@ -1094,6 +1094,28 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
               <div class="mb-small-note">It will not reply to itself and will not admit it is a bot.</div>
             </div>
           </div>
+          <div class="mb-section mb-column-section">
+            <div class="mb-label">Auto Sio</div>
+            <div class="mb-stack">
+              <label class="mb-toggle">
+                <input type="checkbox" id="minibia-bot-auto-sio-enabled" />
+                <span>Enable Auto Sio</span>
+              </label>
+              <input type="text" id="minibia-bot-auto-sio-target" placeholder="Player name" />
+              <div class="mb-field-grid">
+                <label class="mb-field" for="minibia-bot-auto-sio-hp-percent">
+                  <span class="mb-field-label">Heal below (%)</span>
+                  <input type="number" id="minibia-bot-auto-sio-hp-percent" min="1" max="100" placeholder="50" />
+                </label>
+                <label class="mb-field" for="minibia-bot-auto-sio-cooldown">
+                  <span class="mb-field-label">Cooldown (ms)</span>
+                  <input type="number" id="minibia-bot-auto-sio-cooldown" min="0" placeholder="1000" />
+                </label>
+              </div>
+              <input type="text" id="minibia-bot-auto-sio-spell" placeholder="exura sio" />
+              <div class="mb-small-note">Casts only while the named player is visible on the same floor.</div>
+            </div>
+          </div>
         </div>
         <div class="mb-cave-column">
           <div class="mb-section mb-column-section">
@@ -1212,6 +1234,11 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
     const autoHealMinManaPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-mana-percent");
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
+    const autoSioEnabledInput = panel.querySelector("#minibia-bot-auto-sio-enabled");
+    const autoSioTargetInput = panel.querySelector("#minibia-bot-auto-sio-target");
+    const autoSioHpPercentInput = panel.querySelector("#minibia-bot-auto-sio-hp-percent");
+    const autoSioCooldownInput = panel.querySelector("#minibia-bot-auto-sio-cooldown");
+    const autoSioSpellInput = panel.querySelector("#minibia-bot-auto-sio-spell");
     const autoAttackEnabledInput = panel.querySelector("#minibia-bot-auto-attack-enabled");
     const autoAttackMeleeInput = panel.querySelector("#minibia-bot-auto-attack-melee");
     const autoAttackMovementInput = panel.querySelector("#minibia-bot-auto-attack-movement");
@@ -1645,6 +1672,46 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         }
 
         refreshAutoHealStatus();
+      });
+    }
+
+    if (autoSioTargetInput) {
+      autoSioTargetInput.value = bot.sio?.config?.targetName || "";
+      autoSioTargetInput.addEventListener("change", () => bot.sio.updateConfig({ targetName: autoSioTargetInput.value }));
+    }
+    if (autoSioHpPercentInput) {
+      autoSioHpPercentInput.value = String(bot.sio?.config?.minHpPercent ?? 50);
+      autoSioHpPercentInput.addEventListener("change", () => {
+        const minHpPercent = Math.min(100, Math.max(1, Number(autoSioHpPercentInput.value) || 1));
+        autoSioHpPercentInput.value = String(minHpPercent);
+        bot.sio.updateConfig({ minHpPercent });
+      });
+    }
+    if (autoSioCooldownInput) {
+      autoSioCooldownInput.value = String(bot.sio?.config?.cooldownMs ?? 1000);
+      autoSioCooldownInput.addEventListener("change", () => {
+        const cooldownMs = Math.max(0, Number(autoSioCooldownInput.value) || 0);
+        autoSioCooldownInput.value = String(cooldownMs);
+        bot.sio.updateConfig({ cooldownMs });
+      });
+    }
+    if (autoSioSpellInput) {
+      autoSioSpellInput.value = bot.sio?.config?.spellWords || "exura sio";
+      autoSioSpellInput.addEventListener("change", () => bot.sio.updateConfig({ spellWords: autoSioSpellInput.value }));
+    }
+    if (autoSioEnabledInput) {
+      autoSioEnabledInput.checked = !!bot.sio?.status?.().running;
+      autoSioEnabledInput.addEventListener("change", () => {
+        if (autoSioEnabledInput.checked) {
+          bot.sio.start({
+            targetName: autoSioTargetInput?.value || "",
+            minHpPercent: Math.min(100, Math.max(1, Number(autoSioHpPercentInput?.value) || 50)),
+            cooldownMs: Math.max(0, Number(autoSioCooldownInput?.value) || 0),
+            spellWords: autoSioSpellInput?.value || "exura sio",
+          });
+        } else {
+          bot.sio.stop();
+        }
       });
     }
 

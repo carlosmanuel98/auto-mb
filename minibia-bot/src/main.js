@@ -3,6 +3,7 @@
   const persistedEnabledModules = [
     ["rune", "minibiaBot.rune.config"],
     ["heal", "minibiaBot.heal.config"],
+    ["sio", "minibiaBot.sio.config"],
     ["invisible", "minibiaBot.invisible.config"],
     ["magicShield", "minibiaBot.magicShield.config"],
     ["haste", "minibiaBot.haste.config"],
@@ -63,6 +64,7 @@
     currentBundle.installPanicModule(bot);
     currentBundle.installRuneModule(bot);
     currentBundle.installHealModule(bot);
+    currentBundle.installAutoSioModule(bot);
     currentBundle.installAutoInvisibleModule(bot);
     currentBundle.installAutoMagicShieldModule(bot);
     currentBundle.installAutoHasteModule(bot);
@@ -87,6 +89,7 @@
       panic: bot.panic.status(),
       rune: bot.rune.status(),
       heal: bot.heal.status(),
+      sio: bot.sio.status(),
       invisible: bot.invisible.status(),
       magicShield: bot.magicShield.status(),
       haste: bot.haste.status(),
@@ -102,7 +105,7 @@
 
     console.log("[minibia-bot] ready", {
       version: bot.version,
-      modules: ["pz", "xray", "panic", "rune", "heal", "invisible", "magicShield", "haste", "attack", "cave", "equipRing", "eat", "talk", "ui"],
+      modules: ["pz", "xray", "panic", "rune", "heal", "sio", "invisible", "magicShield", "haste", "attack", "cave", "equipRing", "eat", "talk", "ui"],
     });
     console.log("minibiaBot.reload()");
     console.log("minibiaBot.xray.status()");

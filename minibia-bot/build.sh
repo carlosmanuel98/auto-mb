@@ -8,6 +8,7 @@ cat \
   src/modules/panic.js \
   src/modules/rune.js \
   src/modules/heal.js \
+  src/modules/auto-sio.js \
   src/modules/auto-invisible.js \
   src/modules/auto-magic-shield.js \
   src/modules/auto-haste.js \
