@@ -2,6 +2,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
   const configStorageKey = "minibiaBot.heal.config";
+  const MIN_HEAL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -16,7 +17,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
   const config = Object.assign(
     {
       tickMs: 50,
-      healCooldownMs: 1200,
+      hpHealCooldownMs: 2000,
+      manaHealCooldownMs: 1000,
       healRetryMs: 200,
       healConfirmMs: 250,
       minHp: 250,
@@ -31,6 +33,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
   );
   config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
   config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
+  config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 2000);
+  config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -128,7 +132,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       hp.current > 0 &&
       hp.max > 0 &&
       (hp.current / hp.max) * 100 <= config.minHpPercent &&
-      now - state.lastHpHealAt >= config.healCooldownMs &&
+      now - Math.max(state.lastHpHealAt, state.lastHpAttemptAt) >= config.hpHealCooldownMs &&
       now - state.lastHpAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
   }
@@ -141,7 +145,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     return (
       mana.max > 0 &&
       (mana.current / mana.max) * 100 <= config.minManaPercent &&
-      now - state.lastManaHealAt >= config.healCooldownMs &&
+      now - Math.max(state.lastManaHealAt, state.lastManaAttemptAt) >= config.manaHealCooldownMs &&
       now - state.lastManaAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
   }
@@ -231,6 +235,13 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
 
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
+    if (Object.prototype.hasOwnProperty.call(overrides, "healCooldownMs")) {
+      const legacyCooldown = Math.max(MIN_HEAL_COOLDOWN_MS, Number(overrides.healCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+      config.hpHealCooldownMs = legacyCooldown;
+      config.manaHealCooldownMs = legacyCooldown;
+    }
+    config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 2000);
+    config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -300,6 +311,20 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       nextConfig.minManaPercent = Math.min(100, Math.max(1, Number(nextConfig.minManaPercent) || 1));
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "healCooldownMs")) {
+      const legacyCooldown = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.healCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+      nextConfig.hpHealCooldownMs = legacyCooldown;
+      nextConfig.manaHealCooldownMs = legacyCooldown;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "hpHealCooldownMs")) {
+      nextConfig.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.hpHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "manaHealCooldownMs")) {
+      nextConfig.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "healRetryMs")) {
       nextConfig.healRetryMs = Math.max(50, Number(nextConfig.healRetryMs) || 50);
     }
@@ -311,6 +336,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     Object.assign(config, nextConfig);
     config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
     config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
+    config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 2000);
+    config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };

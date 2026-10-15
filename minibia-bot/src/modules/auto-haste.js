@@ -2,6 +2,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModule(bot) {
   const configStorageKey = "minibiaBot.haste.config";
+  const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -18,6 +19,7 @@ window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModu
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 500;
+  config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -111,6 +113,7 @@ window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModu
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 500;
+    config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -158,7 +161,7 @@ window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModu
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "recastCooldownMs")) {
-      nextConfig.recastCooldownMs = Math.max(0, Number(nextConfig.recastCooldownMs) || 0);
+      nextConfig.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(nextConfig.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);

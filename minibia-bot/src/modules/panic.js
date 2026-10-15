@@ -31,7 +31,6 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       unknownPlayerEnabled: false,
       healthLossEnabled: false,
       playerAppearAlertEnabled: false,
-      npcAppearAlertEnabled: false,
       npcPauseAutomationEnabled: true,
       playerChatAlertEnabled: false,
       alertCooldownMs: 3000,
@@ -40,6 +39,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     },
     bot.storage.get(configStorageKey, {})
   );
+  delete config.npcAppearAlertEnabled;
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -223,10 +223,6 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     const appeared = visibleNpcs.filter((npc) => !state.visibleNpcKeys.has(getPlayerKey(npc)));
     state.visibleNpcKeys = currentKeys;
 
-    if (config.npcAppearAlertEnabled && appeared.length) {
-      playAlert("npc-appeared", { npcs: appeared.map((npc) => npc.name) });
-    }
-
     return appeared;
   }
 
@@ -235,6 +231,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       return false;
     }
 
+    playAlert("npc-appeared", { npcs: npcs.map((npc) => npc.name) });
     const reason = `NPC detected: ${npcs.map((npc) => npc.name).filter(Boolean).join(", ") || "unknown"}`;
     bot.setStopReason?.(reason, { npcs: npcs.map((npc) => npc.name) });
     const stoppedCave = !!bot.cave?.stop?.({ reason });
@@ -625,7 +622,6 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       config.unknownPlayerEnabled ||
       config.healthLossEnabled ||
       config.playerAppearAlertEnabled ||
-      config.npcAppearAlertEnabled ||
       config.npcPauseAutomationEnabled ||
       config.playerChatAlertEnabled
     );

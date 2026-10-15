@@ -2,6 +2,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(bot) {
   const configStorageKey = "minibiaBot.sio.config";
+  const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -14,14 +15,14 @@ window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(b
       targetName: "",
       spellWords: "exura sio",
       minHpPercent: 50,
-      cooldownMs: 1000,
+      cooldownMs: 2000,
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 250;
   config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
-  config.cooldownMs = Math.max(0, Number(config.cooldownMs) || 0);
+  config.cooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.cooldownMs) || MIN_SPELL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -110,6 +111,7 @@ window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(b
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 250;
+    config.cooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.cooldownMs) || MIN_SPELL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -148,7 +150,7 @@ window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(b
       nextConfig.minHpPercent = Math.min(100, Math.max(1, Number(nextConfig.minHpPercent) || 1));
     }
     if (Object.prototype.hasOwnProperty.call(nextConfig, "cooldownMs")) {
-      nextConfig.cooldownMs = Math.max(0, Number(nextConfig.cooldownMs) || 0);
+      nextConfig.cooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(nextConfig.cooldownMs) || MIN_SPELL_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);

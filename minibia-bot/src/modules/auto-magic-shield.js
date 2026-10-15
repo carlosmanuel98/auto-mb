@@ -3,6 +3,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMagicShieldModule(bot) {
   const configStorageKey = "minibiaBot.magicShield.config";
   const MAGIC_SHIELD_FALLBACK_DURATION_MS = 180000;
+  const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -21,6 +22,7 @@ window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMag
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 500;
+  config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -161,6 +163,7 @@ window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMag
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 500;
+    config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -211,7 +214,7 @@ window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMag
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "recastCooldownMs")) {
-      nextConfig.recastCooldownMs = Math.max(0, Number(nextConfig.recastCooldownMs) || 0);
+      nextConfig.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(nextConfig.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);

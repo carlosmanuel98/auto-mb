@@ -27,7 +27,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       targetHotbarSlot: 3,
       runeHotbarSlot: null,
       targetCooldownMs: 600,
-      runeCooldownMs: 1200,
+      runeCooldownMs: 2000,
       maxTargetDistance: 8,
       meleeMode: true,
       combatMovement: "auto",
@@ -45,7 +45,9 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
   config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
   config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
-  config.kiteMoveCooldownMs = Math.max(100, Number(config.kiteMoveCooldownMs) || 350);
+  config.kiteMoveCooldownMs = Math.max(250, Number(config.kiteMoveCooldownMs) || 350);
+  config.targetCooldownMs = Math.max(300, Number(config.targetCooldownMs) || 600);
+  config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 2000);
   config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
 
   function persistConfig() {
@@ -827,6 +829,9 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
 
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
+    config.targetCooldownMs = Math.max(300, Number(config.targetCooldownMs) || 300);
+    config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 1000);
+    config.kiteMoveCooldownMs = Math.max(250, Number(config.kiteMoveCooldownMs) || 250);
     persistConfig();
 
     if (state.running) {
@@ -899,7 +904,11 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "targetCooldownMs")) {
-      nextConfig.targetCooldownMs = Math.max(0, Number(nextConfig.targetCooldownMs) || 0);
+      nextConfig.targetCooldownMs = Math.max(300, Number(nextConfig.targetCooldownMs) || 300);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "runeCooldownMs")) {
+      nextConfig.runeCooldownMs = Math.max(1000, Number(nextConfig.runeCooldownMs) || 1000);
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "combatMovement")) {
@@ -915,7 +924,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "kiteMoveCooldownMs")) {
-      nextConfig.kiteMoveCooldownMs = Math.max(100, Number(nextConfig.kiteMoveCooldownMs) || 0);
+      nextConfig.kiteMoveCooldownMs = Math.max(250, Number(nextConfig.kiteMoveCooldownMs) || 250);
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "targetHotbarSlot")) {

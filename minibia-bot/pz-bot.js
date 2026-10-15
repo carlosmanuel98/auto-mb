@@ -1156,7 +1156,6 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       unknownPlayerEnabled: false,
       healthLossEnabled: false,
       playerAppearAlertEnabled: false,
-      npcAppearAlertEnabled: false,
       npcPauseAutomationEnabled: true,
       playerChatAlertEnabled: false,
       alertCooldownMs: 3000,
@@ -1165,6 +1164,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     },
     bot.storage.get(configStorageKey, {})
   );
+  delete config.npcAppearAlertEnabled;
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -1348,10 +1348,6 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
     const appeared = visibleNpcs.filter((npc) => !state.visibleNpcKeys.has(getPlayerKey(npc)));
     state.visibleNpcKeys = currentKeys;
 
-    if (config.npcAppearAlertEnabled && appeared.length) {
-      playAlert("npc-appeared", { npcs: appeared.map((npc) => npc.name) });
-    }
-
     return appeared;
   }
 
@@ -1360,6 +1356,7 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       return false;
     }
 
+    playAlert("npc-appeared", { npcs: npcs.map((npc) => npc.name) });
     const reason = `NPC detected: ${npcs.map((npc) => npc.name).filter(Boolean).join(", ") || "unknown"}`;
     bot.setStopReason?.(reason, { npcs: npcs.map((npc) => npc.name) });
     const stoppedCave = !!bot.cave?.stop?.({ reason });
@@ -1750,7 +1747,6 @@ window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) 
       config.unknownPlayerEnabled ||
       config.healthLossEnabled ||
       config.playerAppearAlertEnabled ||
-      config.npcAppearAlertEnabled ||
       config.npcPauseAutomationEnabled ||
       config.playerChatAlertEnabled
     );
@@ -2164,6 +2160,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
   const configStorageKey = "minibiaBot.heal.config";
+  const MIN_HEAL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -2178,7 +2175,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
   const config = Object.assign(
     {
       tickMs: 50,
-      healCooldownMs: 1200,
+      hpHealCooldownMs: 2000,
+      manaHealCooldownMs: 1000,
       healRetryMs: 200,
       healConfirmMs: 250,
       minHp: 250,
@@ -2193,6 +2191,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
   );
   config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
   config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
+  config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 2000);
+  config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -2290,7 +2290,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       hp.current > 0 &&
       hp.max > 0 &&
       (hp.current / hp.max) * 100 <= config.minHpPercent &&
-      now - state.lastHpHealAt >= config.healCooldownMs &&
+      now - Math.max(state.lastHpHealAt, state.lastHpAttemptAt) >= config.hpHealCooldownMs &&
       now - state.lastHpAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
   }
@@ -2303,7 +2303,7 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     return (
       mana.max > 0 &&
       (mana.current / mana.max) * 100 <= config.minManaPercent &&
-      now - state.lastManaHealAt >= config.healCooldownMs &&
+      now - Math.max(state.lastManaHealAt, state.lastManaAttemptAt) >= config.manaHealCooldownMs &&
       now - state.lastManaAttemptAt >= Math.max(50, Number(config.healRetryMs) || 0)
     );
   }
@@ -2393,6 +2393,13 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
 
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
+    if (Object.prototype.hasOwnProperty.call(overrides, "healCooldownMs")) {
+      const legacyCooldown = Math.max(MIN_HEAL_COOLDOWN_MS, Number(overrides.healCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+      config.hpHealCooldownMs = legacyCooldown;
+      config.manaHealCooldownMs = legacyCooldown;
+    }
+    config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 2000);
+    config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -2462,6 +2469,20 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
       nextConfig.minManaPercent = Math.min(100, Math.max(1, Number(nextConfig.minManaPercent) || 1));
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "healCooldownMs")) {
+      const legacyCooldown = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.healCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+      nextConfig.hpHealCooldownMs = legacyCooldown;
+      nextConfig.manaHealCooldownMs = legacyCooldown;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "hpHealCooldownMs")) {
+      nextConfig.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.hpHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "manaHealCooldownMs")) {
+      nextConfig.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    }
+
     if (Object.prototype.hasOwnProperty.call(nextConfig, "healRetryMs")) {
       nextConfig.healRetryMs = Math.max(50, Number(nextConfig.healRetryMs) || 50);
     }
@@ -2473,6 +2494,8 @@ window.__minibiaBotBundle.installHealModule = function installHealModule(bot) {
     Object.assign(config, nextConfig);
     config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
     config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 50));
+    config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 2000);
+    config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };
@@ -2501,6 +2524,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(bot) {
   const configStorageKey = "minibiaBot.sio.config";
+  const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -2513,14 +2537,14 @@ window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(b
       targetName: "",
       spellWords: "exura sio",
       minHpPercent: 50,
-      cooldownMs: 1000,
+      cooldownMs: 2000,
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 250;
   config.minHpPercent = Math.min(100, Math.max(1, Number(config.minHpPercent) || 50));
-  config.cooldownMs = Math.max(0, Number(config.cooldownMs) || 0);
+  config.cooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.cooldownMs) || MIN_SPELL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -2609,6 +2633,7 @@ window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(b
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 250;
+    config.cooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.cooldownMs) || MIN_SPELL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -2647,7 +2672,7 @@ window.__minibiaBotBundle.installAutoSioModule = function installAutoSioModule(b
       nextConfig.minHpPercent = Math.min(100, Math.max(1, Number(nextConfig.minHpPercent) || 1));
     }
     if (Object.prototype.hasOwnProperty.call(nextConfig, "cooldownMs")) {
-      nextConfig.cooldownMs = Math.max(0, Number(nextConfig.cooldownMs) || 0);
+      nextConfig.cooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(nextConfig.cooldownMs) || MIN_SPELL_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);
@@ -2678,6 +2703,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 window.__minibiaBotBundle.installAutoInvisibleModule = function installAutoInvisibleModule(bot) {
   const configStorageKey = "minibiaBot.invisible.config";
   const INVISIBLE_CONDITION_ID = 4;
+  const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -2695,6 +2721,7 @@ window.__minibiaBotBundle.installAutoInvisibleModule = function installAutoInvis
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 500;
+  config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -2815,6 +2842,7 @@ window.__minibiaBotBundle.installAutoInvisibleModule = function installAutoInvis
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 500;
+    config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -2864,7 +2892,7 @@ window.__minibiaBotBundle.installAutoInvisibleModule = function installAutoInvis
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "recastCooldownMs")) {
-      nextConfig.recastCooldownMs = Math.max(0, Number(nextConfig.recastCooldownMs) || 0);
+      nextConfig.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(nextConfig.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);
@@ -2894,6 +2922,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMagicShieldModule(bot) {
   const configStorageKey = "minibiaBot.magicShield.config";
   const MAGIC_SHIELD_FALLBACK_DURATION_MS = 180000;
+  const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -2912,6 +2941,7 @@ window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMag
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 500;
+  config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -3052,6 +3082,7 @@ window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMag
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 500;
+    config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -3102,7 +3133,7 @@ window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMag
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "recastCooldownMs")) {
-      nextConfig.recastCooldownMs = Math.max(0, Number(nextConfig.recastCooldownMs) || 0);
+      nextConfig.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(nextConfig.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);
@@ -3131,6 +3162,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModule(bot) {
   const configStorageKey = "minibiaBot.haste.config";
+  const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -3147,6 +3179,7 @@ window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModu
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 500;
+  config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -3240,6 +3273,7 @@ window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModu
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 500;
+    config.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(config.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -3287,7 +3321,7 @@ window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModu
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "recastCooldownMs")) {
-      nextConfig.recastCooldownMs = Math.max(0, Number(nextConfig.recastCooldownMs) || 0);
+      nextConfig.recastCooldownMs = Math.max(MIN_SPELL_COOLDOWN_MS, Number(nextConfig.recastCooldownMs) || MIN_SPELL_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);
@@ -3342,7 +3376,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
       targetHotbarSlot: 3,
       runeHotbarSlot: null,
       targetCooldownMs: 600,
-      runeCooldownMs: 1200,
+      runeCooldownMs: 2000,
       maxTargetDistance: 8,
       meleeMode: true,
       combatMovement: "auto",
@@ -3360,7 +3394,9 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
   config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
   config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
   config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
-  config.kiteMoveCooldownMs = Math.max(100, Number(config.kiteMoveCooldownMs) || 350);
+  config.kiteMoveCooldownMs = Math.max(250, Number(config.kiteMoveCooldownMs) || 350);
+  config.targetCooldownMs = Math.max(300, Number(config.targetCooldownMs) || 600);
+  config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 2000);
   config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
 
   function persistConfig() {
@@ -4142,6 +4178,9 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
 
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
+    config.targetCooldownMs = Math.max(300, Number(config.targetCooldownMs) || 300);
+    config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 1000);
+    config.kiteMoveCooldownMs = Math.max(250, Number(config.kiteMoveCooldownMs) || 250);
     persistConfig();
 
     if (state.running) {
@@ -4214,7 +4253,11 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "targetCooldownMs")) {
-      nextConfig.targetCooldownMs = Math.max(0, Number(nextConfig.targetCooldownMs) || 0);
+      nextConfig.targetCooldownMs = Math.max(300, Number(nextConfig.targetCooldownMs) || 300);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "runeCooldownMs")) {
+      nextConfig.runeCooldownMs = Math.max(1000, Number(nextConfig.runeCooldownMs) || 1000);
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "combatMovement")) {
@@ -4230,7 +4273,7 @@ window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "kiteMoveCooldownMs")) {
-      nextConfig.kiteMoveCooldownMs = Math.max(100, Number(nextConfig.kiteMoveCooldownMs) || 0);
+      nextConfig.kiteMoveCooldownMs = Math.max(250, Number(nextConfig.kiteMoveCooldownMs) || 250);
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "targetHotbarSlot")) {
@@ -6351,6 +6394,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(bot) {
   const configStorageKey = "minibiaBot.eat.config";
+  const MIN_EAT_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -6369,6 +6413,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
   );
   config.tickMs = 1000;
   config.eatMode = config.eatMode === "interval" ? "interval" : "whenHungry";
+  config.eatCooldownMs = Math.max(MIN_EAT_COOLDOWN_MS, Number(config.eatCooldownMs) || MIN_EAT_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -6487,6 +6532,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 1000;
+    config.eatCooldownMs = Math.max(MIN_EAT_COOLDOWN_MS, Number(config.eatCooldownMs) || MIN_EAT_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -6536,7 +6582,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "eatCooldownMs")) {
-      nextConfig.eatCooldownMs = Math.max(0, Number(nextConfig.eatCooldownMs) || 0);
+      nextConfig.eatCooldownMs = Math.max(MIN_EAT_COOLDOWN_MS, Number(nextConfig.eatCooldownMs) || MIN_EAT_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);
@@ -8185,12 +8231,8 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <span>Sound: player appears</span>
               </label>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-npc-appear-alert" />
-                <span>Sound: NPC appears</span>
-              </label>
-              <label class="mb-toggle">
                 <input type="checkbox" id="minibia-bot-npc-pause-automation" />
-                <span>Stop Cavebot & Attack: NPC appears</span>
+                <span>Sound & stop Cavebot/Attack: NPC appears</span>
               </label>
               <label class="mb-toggle">
                 <input type="checkbox" id="minibia-bot-player-chat-alert" />
@@ -8241,7 +8283,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 </label>
                 <label class="mb-field mb-field-compact" for="minibia-bot-auto-eat-cooldown">
                   <span class="mb-field-label">Cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-eat-cooldown" min="0" placeholder="60000" />
+                  <input type="number" id="minibia-bot-auto-eat-cooldown" min="1000" placeholder="60000" />
                 </label>
               </div>
               <div class="mb-row">
@@ -8262,7 +8304,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 </label>
                 <label class="mb-field mb-field-compact" for="minibia-bot-auto-haste-cooldown">
                   <span class="mb-field-label">Recast cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-haste-cooldown" min="0" placeholder="2000" />
+                  <input type="number" id="minibia-bot-auto-haste-cooldown" min="1000" placeholder="2000" />
                 </label>
               </div>
               <div class="mb-row">
@@ -8323,7 +8365,17 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                   <input type="number" id="minibia-bot-auto-heal-mana-hotkey" min="1" max="12" placeholder="2" />
                 </label>
               </div>
-              <div class="mb-small-note">Checks about twenty times per second. HP is used before mana, and unregistered hotkey presses are retried quickly.</div>
+              <div class="mb-field-grid">
+                <label class="mb-field" for="minibia-bot-auto-heal-hp-cooldown">
+                  <span class="mb-field-label">HP spell cooldown (ms)</span>
+                  <input type="number" id="minibia-bot-auto-heal-hp-cooldown" min="1000" placeholder="2000" />
+                </label>
+                <label class="mb-field" for="minibia-bot-auto-heal-mana-cooldown">
+                  <span class="mb-field-label">Mana spell cooldown (ms)</span>
+                  <input type="number" id="minibia-bot-auto-heal-mana-cooldown" min="1000" placeholder="1000" />
+                </label>
+              </div>
+              <div class="mb-small-note">Checks about twenty times per second. HP is used before mana; each hotkey has its own spell cooldown.</div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
@@ -8355,7 +8407,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 </label>
                 <label class="mb-field" for="minibia-bot-auto-sio-cooldown">
                   <span class="mb-field-label">Cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-sio-cooldown" min="0" placeholder="1000" />
+                  <input type="number" id="minibia-bot-auto-sio-cooldown" min="1000" placeholder="2000" />
                 </label>
               </div>
               <input type="text" id="minibia-bot-auto-sio-spell" placeholder="exura sio" />
@@ -8435,10 +8487,14 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
                 <input type="number" id="minibia-bot-auto-attack-hotkey" min="1" max="12" placeholder="3" />
               </label>
               <label class="mb-field" for="minibia-bot-auto-attack-rune-hotkey">
-                <span class="mb-field-label">Rune Hotkey (1-12)</span>
+                <span class="mb-field-label">Action Hotkey (1-12)</span>
                 <input type="number" id="minibia-bot-auto-attack-rune-hotkey" min="1" max="12" placeholder="4" />
               </label>
-              <div class="mb-small-note">Melee follows adjacent; kite keeps the configured range while firing the target hotkey. Default preserves the melee setting.</div>
+              <label class="mb-field" for="minibia-bot-auto-attack-rune-cooldown">
+                <span class="mb-field-label">Action cooldown (ms)</span>
+                <input type="number" id="minibia-bot-auto-attack-rune-cooldown" min="1000" placeholder="2000" />
+              </label>
+              <div class="mb-small-note">Melee follows adjacent; kite keeps the configured range. The action hotkey is used on the current target at its configured cooldown.</div>
             </div>
           </div>
         </div>
@@ -8480,6 +8536,8 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
     const autoHealMinManaPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-mana-percent");
     const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
+    const autoHealHpCooldownInput = panel.querySelector("#minibia-bot-auto-heal-hp-cooldown");
+    const autoHealManaCooldownInput = panel.querySelector("#minibia-bot-auto-heal-mana-cooldown");
     const autoSioEnabledInput = panel.querySelector("#minibia-bot-auto-sio-enabled");
     const autoSioTargetInput = panel.querySelector("#minibia-bot-auto-sio-target");
     const autoSioHpPercentInput = panel.querySelector("#minibia-bot-auto-sio-hp-percent");
@@ -8493,6 +8551,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const autoAttackIgnoreMonstersInput = panel.querySelector("#minibia-bot-auto-attack-ignore-monsters");
     const autoAttackHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-hotkey");
     const autoAttackRuneHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-rune-hotkey");
+    const autoAttackRuneCooldownInput = panel.querySelector("#minibia-bot-auto-attack-rune-cooldown");
     const talkEnabledInput = panel.querySelector("#minibia-bot-talk-enabled");
     const talkApiKeyInput = panel.querySelector("#minibia-bot-talk-api-key");
     const talkPromptInput = panel.querySelector("#minibia-bot-talk-prompt");
@@ -8502,7 +8561,6 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     const panicHealthInput = panel.querySelector("#minibia-bot-panic-health");
     const panicReturnInput = panel.querySelector("#minibia-bot-panic-return");
     const playerAppearAlertInput = panel.querySelector("#minibia-bot-player-appear-alert");
-    const npcAppearAlertInput = panel.querySelector("#minibia-bot-npc-appear-alert");
     const npcPauseAutomationInput = panel.querySelector("#minibia-bot-npc-pause-automation");
     const playerChatAlertInput = panel.querySelector("#minibia-bot-player-chat-alert");
     const panicTrustedInput = panel.querySelector("#minibia-bot-panic-trusted-input");
@@ -8655,7 +8713,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (autoEatCooldownInput) {
       autoEatCooldownInput.value = String(bot.eat?.config?.eatCooldownMs ?? 60000);
       autoEatCooldownInput.addEventListener("change", () => {
-        const eatCooldownMs = Math.max(0, Number(autoEatCooldownInput.value) || 0);
+        const eatCooldownMs = Math.max(1000, Number(autoEatCooldownInput.value) || 1000);
         autoEatCooldownInput.value = String(eatCooldownMs);
         bot.eat.updateConfig({ eatCooldownMs });
       });
@@ -8689,7 +8747,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (autoHasteCooldownInput) {
       autoHasteCooldownInput.value = String(bot.haste?.config?.recastCooldownMs ?? 2000);
       autoHasteCooldownInput.addEventListener("change", () => {
-        const recastCooldownMs = Math.max(0, Number(autoHasteCooldownInput.value) || 0);
+        const recastCooldownMs = Math.max(1000, Number(autoHasteCooldownInput.value) || 1000);
         autoHasteCooldownInput.value = String(recastCooldownMs);
         bot.haste.updateConfig({ recastCooldownMs });
       });
@@ -8701,7 +8759,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         if (autoHasteEnabledInput.checked) {
           bot.haste.start({
             spellWords: autoHasteSpellInput?.value?.trim() || bot.haste.config.spellWords,
-            recastCooldownMs: Math.max(0, Number(autoHasteCooldownInput?.value) || bot.haste.config.recastCooldownMs || 0),
+            recastCooldownMs: Math.max(1000, Number(autoHasteCooldownInput?.value) || bot.haste.config.recastCooldownMs || 1000),
           });
         } else {
           bot.haste.stop();
@@ -8897,6 +8955,24 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (autoHealHpCooldownInput) {
+      autoHealHpCooldownInput.value = String(bot.heal?.config?.hpHealCooldownMs ?? 2000);
+      autoHealHpCooldownInput.addEventListener("change", () => {
+        const hpHealCooldownMs = Math.max(1000, Number(autoHealHpCooldownInput.value) || 1000);
+        autoHealHpCooldownInput.value = String(hpHealCooldownMs);
+        bot.heal.updateConfig({ hpHealCooldownMs });
+      });
+    }
+
+    if (autoHealManaCooldownInput) {
+      autoHealManaCooldownInput.value = String(bot.heal?.config?.manaHealCooldownMs ?? 1000);
+      autoHealManaCooldownInput.addEventListener("change", () => {
+        const manaHealCooldownMs = Math.max(1000, Number(autoHealManaCooldownInput.value) || 1000);
+        autoHealManaCooldownInput.value = String(manaHealCooldownMs);
+        bot.heal.updateConfig({ manaHealCooldownMs });
+      });
+    }
+
     if (autoHealEnabledInput) {
       autoHealEnabledInput.checked = !!bot.heal?.status?.().running;
       autoHealEnabledInput.addEventListener("change", () => {
@@ -8906,13 +8982,15 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
           Math.max(1, Number(autoHealHpHotkeyInput?.value) || bot.heal.config.hpHotbarSlot || 1)
         );
         const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput?.value) || bot.heal.config.minManaPercent || 50));
+        const hpHealCooldownMs = Math.max(1000, Number(autoHealHpCooldownInput?.value) || bot.heal.config.hpHealCooldownMs || 2000);
+        const manaHealCooldownMs = Math.max(1000, Number(autoHealManaCooldownInput?.value) || bot.heal.config.manaHealCooldownMs || 1000);
         const manaHotbarSlot = Math.min(
           12,
           Math.max(1, Number(autoHealManaHotkeyInput?.value) || bot.heal.config.manaHotbarSlot || 1)
         );
 
         if (autoHealEnabledInput.checked) {
-          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot });
+          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot, hpHealCooldownMs, manaHealCooldownMs });
         } else {
           bot.heal.stop();
         }
@@ -8934,9 +9012,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
     if (autoSioCooldownInput) {
-      autoSioCooldownInput.value = String(bot.sio?.config?.cooldownMs ?? 1000);
+      autoSioCooldownInput.value = String(bot.sio?.config?.cooldownMs ?? 2000);
       autoSioCooldownInput.addEventListener("change", () => {
-        const cooldownMs = Math.max(0, Number(autoSioCooldownInput.value) || 0);
+        const cooldownMs = Math.max(1000, Number(autoSioCooldownInput.value) || 1000);
         autoSioCooldownInput.value = String(cooldownMs);
         bot.sio.updateConfig({ cooldownMs });
       });
@@ -8952,7 +9030,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
           bot.sio.start({
             targetName: autoSioTargetInput?.value || "",
             minHpPercent: Math.min(100, Math.max(1, Number(autoSioHpPercentInput?.value) || 50)),
-            cooldownMs: Math.max(0, Number(autoSioCooldownInput?.value) || 0),
+            cooldownMs: Math.max(1000, Number(autoSioCooldownInput?.value) || bot.sio.config.cooldownMs || 1000),
             spellWords: autoSioSpellInput?.value || "exura sio",
           });
         } else {
@@ -8981,6 +9059,15 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
           : null;
         autoAttackRuneHotkeyInput.value = runeHotbarSlot ? String(runeHotbarSlot) : "";
         bot.attack.updateConfig({ runeHotbarSlot });
+      });
+    }
+
+    if (autoAttackRuneCooldownInput) {
+      autoAttackRuneCooldownInput.value = String(bot.attack?.config?.runeCooldownMs ?? 2000);
+      autoAttackRuneCooldownInput.addEventListener("change", () => {
+        const runeCooldownMs = Math.max(1000, Number(autoAttackRuneCooldownInput.value) || 1000);
+        autoAttackRuneCooldownInput.value = String(runeCooldownMs);
+        bot.attack.updateConfig({ runeCooldownMs });
       });
     }
 
@@ -9041,9 +9128,13 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         })();
         const meleeMode = !!autoAttackMeleeInput?.checked;
         const combatMovement = autoAttackMovementInput?.value === "kite" ? "kite" : "auto";
+        const runeCooldownMs = Math.max(
+          1000,
+          Number(autoAttackRuneCooldownInput?.value) || bot.attack.config.runeCooldownMs || 2000
+        );
 
         if (autoAttackEnabledInput.checked) {
-          bot.attack.start({ targetHotbarSlot, runeHotbarSlot, meleeMode, combatMovement });
+          bot.attack.start({ targetHotbarSlot, runeHotbarSlot, meleeMode, combatMovement, runeCooldownMs });
         } else {
           bot.attack.stop();
         }
@@ -9115,14 +9206,6 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       playerAppearAlertInput.checked = !!bot.panic?.status?.().config?.playerAppearAlertEnabled;
       playerAppearAlertInput.addEventListener("change", () => {
         bot.panic.updateConfig({ playerAppearAlertEnabled: playerAppearAlertInput.checked });
-        refreshPanicStatus();
-      });
-    }
-
-    if (npcAppearAlertInput) {
-      npcAppearAlertInput.checked = !!bot.panic?.status?.().config?.npcAppearAlertEnabled;
-      npcAppearAlertInput.addEventListener("change", () => {
-        bot.panic.updateConfig({ npcAppearAlertEnabled: npcAppearAlertInput.checked });
         refreshPanicStatus();
       });
     }

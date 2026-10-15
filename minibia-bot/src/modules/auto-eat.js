@@ -2,6 +2,7 @@ window.__minibiaBotBundle = window.__minibiaBotBundle || {};
 
 window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(bot) {
   const configStorageKey = "minibiaBot.eat.config";
+  const MIN_EAT_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
@@ -20,6 +21,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
   );
   config.tickMs = 1000;
   config.eatMode = config.eatMode === "interval" ? "interval" : "whenHungry";
+  config.eatCooldownMs = Math.max(MIN_EAT_COOLDOWN_MS, Number(config.eatCooldownMs) || MIN_EAT_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -138,6 +140,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 1000;
+    config.eatCooldownMs = Math.max(MIN_EAT_COOLDOWN_MS, Number(config.eatCooldownMs) || MIN_EAT_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -187,7 +190,7 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "eatCooldownMs")) {
-      nextConfig.eatCooldownMs = Math.max(0, Number(nextConfig.eatCooldownMs) || 0);
+      nextConfig.eatCooldownMs = Math.max(MIN_EAT_COOLDOWN_MS, Number(nextConfig.eatCooldownMs) || MIN_EAT_COOLDOWN_MS);
     }
 
     Object.assign(config, nextConfig);
