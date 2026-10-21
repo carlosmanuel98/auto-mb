@@ -1,12 +1,12 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installPanel = function installPanel(bot) {
-  const panelPositionKey = "minibiaBot.ui.panelPosition";
-  const panelCollapsedKey = "minibiaBot.ui.panelCollapsed";
+window.__mageTuntunBundle.installPanel = function installPanel(bot) {
+  const panelPositionKey = "mageTuntun.ui.panelPosition";
+  const panelCollapsedKey = "mageTuntun.ui.panelCollapsed";
 
   function destroy() {
-    document.getElementById("minibia-bot-panel")?.remove();
-    document.getElementById("minibia-bot-style")?.remove();
+    document.getElementById("mage-tuntun-panel")?.remove();
+    document.getElementById("mage-tuntun-style")?.remove();
   }
 
   function savePanelPosition(position, key = panelPositionKey) {
@@ -26,7 +26,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
   }
 
   function refreshHomeLabel() {
-    const homeLabel = document.getElementById("minibia-bot-home");
+    const homeLabel = document.getElementById("mage-tuntun-home");
     if (!homeLabel) return;
 
     const home = bot.pz?.getHomePz?.();
@@ -35,10 +35,38 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       : "Panic Runner Home: not set";
   }
 
+  function refreshProfileLabel() {
+    const profileLabel = document.getElementById("mage-tuntun-profile");
+    const activeProfile = bot.getActiveProfileName?.();
+    const savedProfiles = bot.getSavedProfileNames?.() || [];
+    const automatic = !!bot.isAutomaticProfile?.();
+    if (profileLabel) {
+      profileLabel.textContent = activeProfile
+      ? `Profile: ${automatic ? "Character — " : ""}${activeProfile}${savedProfiles.length > 1 ? ` (${savedProfiles.length} saved)` : ""}`
+      : "Profile: waiting for character";
+    }
+
+    const select = document.getElementById("mage-tuntun-profile-select");
+    if (!select || document.activeElement === select) return;
+    const characterName = bot.getCharacterProfileName?.();
+    select.innerHTML = "";
+    const automaticOption = document.createElement("option");
+    automaticOption.value = "__character__";
+    automaticOption.textContent = characterName ? `Character: ${characterName}` : "Character (loading...)";
+    select.appendChild(automaticOption);
+    savedProfiles.forEach((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+    select.value = automatic ? "__character__" : (activeProfile || "__character__");
+  }
+
   function refreshPanicStatus() {
-    const unknownToggle = document.getElementById("minibia-bot-panic-unknown");
-    const healthToggle = document.getElementById("minibia-bot-panic-health");
-    const returnToggle = document.getElementById("minibia-bot-panic-return");
+    const unknownToggle = document.getElementById("mage-tuntun-panic-unknown");
+    const healthToggle = document.getElementById("mage-tuntun-panic-health");
+    const returnToggle = document.getElementById("mage-tuntun-panic-return");
     const status = bot.panic?.status?.();
 
     if (unknownToggle) {
@@ -57,9 +85,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
   function refreshXrayStatus() {
     const status = bot.xray?.status?.();
     const me = bot.getPlayerPosition?.();
-    const overlayButton = document.getElementById("minibia-bot-xray-overlay-toggle");
-    const overlayLabel = document.getElementById("minibia-bot-xray-overlay-status");
-    const floorSelect = document.getElementById("minibia-bot-xray-floor-select");
+    const overlayButton = document.getElementById("mage-tuntun-xray-overlay-toggle");
+    const overlayLabel = document.getElementById("mage-tuntun-xray-overlay-status");
+    const floorSelect = document.getElementById("mage-tuntun-xray-floor-select");
     const formatFloorOffset = (floor) => {
       if (!me || floor == null) {
         return null;
@@ -117,7 +145,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
   }
 
   function renderTrustedNames() {
-    const list = document.getElementById("minibia-bot-panic-trusted-list");
+    const list = document.getElementById("mage-tuntun-panic-trusted-list");
     if (!list) return;
 
     const trustedNames = bot.panic?.config?.trustedNames || [];
@@ -154,46 +182,122 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     });
   }
 
-  function renderGameMasterNames() {
-    const list = document.getElementById("minibia-bot-panic-gm-list");
-    if (!list) return;
+  function renderChips(containerId, items, onRemove) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = "";
 
-    const gameMasterNames = bot.panic?.config?.gameMasterNames || [];
-    list.innerHTML = "";
-
-    if (!gameMasterNames.length) {
-      const empty = document.createElement("div");
+    if (!items || !items.length) {
+      const empty = document.createElement("span");
       empty.className = "mb-small-note";
-      empty.textContent = "No game master names saved.";
-      list.appendChild(empty);
+      empty.textContent = "(none)";
+      container.appendChild(empty);
       return;
     }
 
-    gameMasterNames.forEach((name, index) => {
-      const row = document.createElement("div");
-      row.className = "mb-list-row";
+    items.forEach((item, index) => {
+      const chip = document.createElement("span");
+      chip.className = "mb-chip";
 
       const label = document.createElement("span");
-      label.textContent = name;
+      label.textContent = item;
 
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "mb-small-button";
-      removeButton.textContent = "Remove";
-      removeButton.addEventListener("click", () => {
-        const nextNames = gameMasterNames.filter((_, currentIndex) => currentIndex !== index);
-        bot.panic.updateConfig({ gameMasterNames: nextNames });
-        renderGameMasterNames();
-      });
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "mb-chip-remove";
+      removeBtn.textContent = "×";
+      removeBtn.title = "Remove";
+      removeBtn.addEventListener("click", () => onRemove(index));
 
-      row.appendChild(label);
-      row.appendChild(removeButton);
-      list.appendChild(row);
+      chip.appendChild(label);
+      chip.appendChild(removeBtn);
+      container.appendChild(chip);
     });
   }
 
+  function renderGmStaffNames() {
+    const staffNames = bot.gm?.config?.staffNames || [];
+    renderChips("mage-tuntun-gm-name-chips", staffNames, (index) => {
+      const nextNames = staffNames.filter((_, i) => i !== index);
+      bot.gm?.updateConfig({ staffNames: nextNames });
+      renderGmStaffNames();
+    });
+  }
+
+  function renderGmFirstReplies() {
+    const firstReplies = bot.gm?.config?.firstReplies || [];
+    renderChips("mage-tuntun-gm-first-reply-chips", firstReplies, (index) => {
+      const nextReplies = firstReplies.filter((_, i) => i !== index);
+      bot.gm?.updateConfig({ firstReplies: nextReplies });
+      renderGmFirstReplies();
+    });
+  }
+
+  function renderGmSecondReplies() {
+    const secondReplies = bot.gm?.config?.secondReplies || [];
+    renderChips("mage-tuntun-gm-second-reply-chips", secondReplies, (index) => {
+      const nextReplies = secondReplies.filter((_, i) => i !== index);
+      bot.gm?.updateConfig({ secondReplies: nextReplies });
+      renderGmSecondReplies();
+    });
+  }
+
+  function refreshGmStatus() {
+    const status = bot.gm?.status?.();
+    const gmToggle = document.getElementById("mage-tuntun-gm-enabled");
+    const statusLabel = document.getElementById("mage-tuntun-gm-status");
+    const pauseToggle = document.getElementById("mage-tuntun-gm-pause-hunting");
+    const ignorePzToggle = document.getElementById("mage-tuntun-gm-ignore-pz");
+    const reactNameToggle = document.getElementById("mage-tuntun-gm-react-name");
+    const reactGmChatToggle = document.getElementById("mage-tuntun-gm-react-chat");
+    const autoRepliesToggle = document.getElementById("mage-tuntun-gm-auto-replies");
+    const soundToggle = document.getElementById("mage-tuntun-gm-sound");
+    const captchaToggle = document.getElementById("mage-tuntun-captcha-enabled");
+    const captchaSoundToggle = document.getElementById("mage-tuntun-captcha-sound");
+    const captchaAutoSolveToggle = document.getElementById("mage-tuntun-captcha-auto-solve");
+    const cooldownInput = document.getElementById("mage-tuntun-gm-cooldown-min");
+
+    if (gmToggle) gmToggle.checked = !!status?.running;
+    if (pauseToggle) pauseToggle.checked = !!status?.config?.pauseHuntingOnGm;
+    if (ignorePzToggle) ignorePzToggle.checked = !!status?.config?.ignoreGmInPz;
+    if (reactNameToggle) reactNameToggle.checked = !!status?.config?.reactOnNameMention;
+    if (reactGmChatToggle) reactGmChatToggle.checked = !!status?.config?.reactOnGmChat;
+    if (autoRepliesToggle) autoRepliesToggle.checked = !!status?.config?.autoRepliesEnabled;
+    if (soundToggle) soundToggle.checked = !!status?.config?.soundOnGm;
+    if (captchaToggle) captchaToggle.checked = !!status?.config?.captchaWatcherEnabled;
+    if (captchaSoundToggle) captchaSoundToggle.checked = !!status?.config?.soundOnCaptcha;
+    if (captchaAutoSolveToggle) captchaAutoSolveToggle.checked = !!status?.config?.captchaAutoSolveEnabled;
+    if (cooldownInput && document.activeElement !== cooldownInput) {
+      cooldownInput.value = Math.round((status?.config?.dontReactAgainMs || 600000) / 60000);
+    }
+
+    if (statusLabel) {
+      if (status?.captchaActive) {
+        statusLabel.textContent = "ANTI-BOT ACTIVE!";
+        statusLabel.style.color = "#ff4d4d";
+        statusLabel.style.fontWeight = "bold";
+      } else if (status?.isGmCurrentlyVisible) {
+        statusLabel.textContent = "GM ON SCREEN!";
+        statusLabel.style.color = "#f2994a";
+        statusLabel.style.fontWeight = "bold";
+      } else if (status?.running) {
+        statusLabel.textContent = "Watching";
+        statusLabel.style.color = "#82ca9d";
+        statusLabel.style.fontWeight = "normal";
+      } else {
+        statusLabel.textContent = "Idle";
+        statusLabel.style.color = "#b7a67d";
+        statusLabel.style.fontWeight = "normal";
+      }
+    }
+  }
+
+  function renderGameMasterNames() {
+    renderGmStaffNames();
+  }
+
   function refreshRuneStatus() {
-    const runeToggle = document.getElementById("minibia-bot-rune-enabled");
+    const runeToggle = document.getElementById("mage-tuntun-rune-enabled");
     const running = !!bot.rune?.status?.().running;
 
     if (runeToggle) {
@@ -202,51 +306,51 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
   }
 
   function refreshAutoEatStatus() {
-    const autoEatToggle = document.getElementById("minibia-bot-auto-eat-enabled");
+    const autoEatToggle = document.getElementById("mage-tuntun-auto-eat-enabled");
     if (!autoEatToggle) return;
 
     autoEatToggle.checked = !!bot.eat?.status?.().running;
   }
 
   function refreshAutoHealStatus() {
-    const autoHealToggle = document.getElementById("minibia-bot-auto-heal-enabled");
+    const autoHealToggle = document.getElementById("mage-tuntun-auto-heal-enabled");
     if (!autoHealToggle) return;
 
     autoHealToggle.checked = !!bot.heal?.status?.().running;
   }
 
   function refreshAutoInvisibleStatus() {
-    const autoInvisibleToggle = document.getElementById("minibia-bot-auto-invisible-enabled");
+    const autoInvisibleToggle = document.getElementById("mage-tuntun-auto-invisible-enabled");
     if (!autoInvisibleToggle) return;
 
     autoInvisibleToggle.checked = !!bot.invisible?.status?.().running;
   }
 
   function refreshAutoMagicShieldStatus() {
-    const autoMagicShieldToggle = document.getElementById("minibia-bot-auto-magic-shield-enabled");
+    const autoMagicShieldToggle = document.getElementById("mage-tuntun-auto-magic-shield-enabled");
     if (!autoMagicShieldToggle) return;
 
     autoMagicShieldToggle.checked = !!bot.magicShield?.status?.().running;
   }
 
   function refreshAutoHasteStatus() {
-    const autoHasteToggle = document.getElementById("minibia-bot-auto-haste-enabled");
+    const autoHasteToggle = document.getElementById("mage-tuntun-auto-haste-enabled");
     if (!autoHasteToggle) return;
 
     autoHasteToggle.checked = !!bot.haste?.status?.().running;
   }
 
   function refreshAutoAttackStatus() {
-    const autoAttackToggle = document.getElementById("minibia-bot-auto-attack-enabled");
+    const autoAttackToggle = document.getElementById("mage-tuntun-auto-attack-enabled");
     if (!autoAttackToggle) return;
 
     autoAttackToggle.checked = !!bot.attack?.status?.().running;
   }
 
   function refreshCaveStatus() {
-    const statusLabel = document.getElementById("minibia-bot-cave-status");
-    const startButton = document.getElementById("minibia-bot-cave-start");
-    const stopButton = document.getElementById("minibia-bot-cave-stop");
+    const statusLabel = document.getElementById("mage-tuntun-cave-status");
+    const startButton = document.getElementById("mage-tuntun-cave-start");
+    const stopButton = document.getElementById("mage-tuntun-cave-stop");
     const route = bot.cave?.getRoute?.() || [];
     const status = bot.cave?.status?.();
 
@@ -272,12 +376,52 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (stopButton) {
       stopButton.disabled = !status?.running;
     }
+
+    refreshCaveWaypointList(route, status);
+  }
+
+  function refreshCaveWaypointList(route = bot.cave?.getRoute?.() || [], status = bot.cave?.status?.()) {
+    const list = document.getElementById("mage-tuntun-cave-waypoint-list");
+    if (!list) return;
+
+    list.innerHTML = "";
+    if (!route.length) {
+      const empty = document.createElement("div");
+      empty.className = "mb-small-note";
+      empty.textContent = "No waypoints recorded.";
+      list.appendChild(empty);
+      return;
+    }
+
+    route.forEach((waypoint, index) => {
+      const row = document.createElement("div");
+      row.className = "mb-list-row";
+
+      const label = document.createElement("span");
+      const isCurrent = !!status?.running && index === status.currentIndex;
+      label.textContent = `${isCurrent ? "▶ " : ""}${index + 1}. ${waypoint.x}, ${waypoint.y}, ${waypoint.z}`;
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "mb-small-button";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => {
+        bot.cave?.removeWaypoint?.(index);
+        refreshCaveStatus();
+        refreshCaveClosestStatus();
+        refreshCaveTransitionStatus();
+      });
+
+      row.appendChild(label);
+      row.appendChild(removeButton);
+      list.appendChild(row);
+    });
   }
 
   function refreshCavePresetControls() {
-    const select = document.getElementById("minibia-bot-cave-preset-select");
-    const label = document.getElementById("minibia-bot-cave-preset-status");
-    const deleteButton = document.getElementById("minibia-bot-cave-preset-delete");
+    const select = document.getElementById("mage-tuntun-cave-preset-select");
+    const label = document.getElementById("mage-tuntun-cave-preset-status");
+    const deleteButton = document.getElementById("mage-tuntun-cave-preset-delete");
     const status = bot.cave?.status?.();
     const presetNames = status?.presetNames || bot.cave?.getPresetNames?.() || [];
     const activePresetName = status?.activePresetName || bot.cave?.getActivePresetName?.() || "Default";
@@ -317,14 +461,14 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       deleteButton.disabled = !presetNames.length || !select?.value;
     }
 
-    const allowedMonstersInput = document.getElementById("minibia-bot-cave-allowed-monsters");
+    const allowedMonstersInput = document.getElementById("mage-tuntun-cave-allowed-monsters");
     if (allowedMonstersInput && document.activeElement !== allowedMonstersInput) {
       allowedMonstersInput.value = (status?.allowedMonsters || bot.cave?.getAllowedMonsters?.() || []).join(", ");
     }
   }
 
   function refreshCaveClosestStatus() {
-    const label = document.getElementById("minibia-bot-cave-closest");
+    const label = document.getElementById("mage-tuntun-cave-closest");
     if (!label) return;
 
     const position = bot.getPlayerPosition?.();
@@ -352,7 +496,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
   }
 
   function refreshCaveTransitionStatus() {
-    const label = document.getElementById("minibia-bot-cave-transition-status");
+    const label = document.getElementById("mage-tuntun-cave-transition-status");
     if (!label) return;
 
     const transitions = bot.cave?.getTransitions?.() || [];
@@ -377,15 +521,15 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
   }
 
   function refreshEquipRingStatus() {
-    const equipRingToggle = document.getElementById("minibia-bot-equip-ring-enabled");
+    const equipRingToggle = document.getElementById("mage-tuntun-equip-ring-enabled");
     if (!equipRingToggle) return;
 
     equipRingToggle.checked = !!bot.equipRing?.status?.().running;
   }
 
   function refreshTalkStatus() {
-    const talkToggle = document.getElementById("minibia-bot-talk-enabled");
-    const statusLabel = document.getElementById("minibia-bot-talk-status");
+    const talkToggle = document.getElementById("mage-tuntun-talk-enabled");
+    const statusLabel = document.getElementById("mage-tuntun-talk-status");
     const status = bot.talk?.status?.();
 
     if (talkToggle) {
@@ -393,20 +537,20 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     }
 
     if (statusLabel) {
-      if (!status?.config?.apiKey) {
-        statusLabel.textContent = "Status: API key missing";
-      } else if (status?.pending) {
-        statusLabel.textContent = "Status: generating";
+      if (status?.pending) {
+        statusLabel.textContent = "Estado: respondiendo...";
       } else if (status?.running) {
-        statusLabel.textContent = "Status: listening to Default";
+        statusLabel.textContent = status?.config?.apiKey
+          ? "Estado: activo (IA Gemini)"
+          : "Estado: activo (respuestas de jugador)";
       } else {
-        statusLabel.textContent = "Status: idle";
+        statusLabel.textContent = "Estado: inactivo";
       }
     }
   }
 
   function refreshVisibleCreatures() {
-    const list = document.getElementById("minibia-bot-visible-creatures-list");
+    const list = document.getElementById("mage-tuntun-visible-creatures-list");
     if (!list) return;
 
     const me = bot.getPlayerPosition?.();
@@ -498,7 +642,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (!panel) return;
 
     const body = panel.querySelector(".mb-body");
-    const toggle = panel.querySelector("#minibia-bot-collapse");
+    const toggle = panel.querySelector("#mage-tuntun-collapse");
     const nextCollapsed = !!collapsed;
 
     panel.dataset.collapsed = nextCollapsed ? "true" : "false";
@@ -596,9 +740,9 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     destroy();
 
     const style = document.createElement("style");
-    style.id = "minibia-bot-style";
+    style.id = "mage-tuntun-style";
     style.textContent = `
-      #minibia-bot-panel {
+      #mage-tuntun-panel {
         position: fixed;
         z-index: 999999;
         max-width: calc(100vw - 32px);
@@ -615,17 +759,17 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         flex-direction: column;
       }
 
-      #minibia-bot-panel {
+      #mage-tuntun-panel {
         top: 16px;
         right: 16px;
         width: 960px;
       }
 
-      #minibia-bot-panel[data-collapsed="true"] {
+      #mage-tuntun-panel[data-collapsed="true"] {
         width: 220px;
       }
 
-      #minibia-bot-panel .mb-title {
+      #mage-tuntun-panel .mb-title {
         margin: 0;
         font-weight: 700;
         letter-spacing: 0.04em;
@@ -634,7 +778,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         touch-action: none;
       }
 
-      #minibia-bot-panel .mb-titlebar {
+      #mage-tuntun-panel .mb-titlebar {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -642,7 +786,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         margin: 0 0 8px;
       }
 
-      #minibia-bot-panel .mb-icon-button {
+      #mage-tuntun-panel .mb-icon-button {
         width: 24px;
         min-width: 24px;
         padding: 2px 0;
@@ -651,11 +795,11 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         line-height: 1;
       }
 
-      #minibia-bot-panel[data-collapsed="true"] .mb-titlebar {
+      #mage-tuntun-panel[data-collapsed="true"] .mb-titlebar {
         margin-bottom: 0;
       }
 
-      #minibia-bot-panel .mb-body {
+      #mage-tuntun-panel .mb-body {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 280px 240px;
         gap: 12px;
@@ -667,47 +811,47 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         padding-right: 4px;
       }
 
-      #minibia-bot-panel .mb-body[hidden] {
+      #mage-tuntun-panel .mb-body[hidden] {
         display: none !important;
       }
 
-      #minibia-bot-panel .mb-side-column,
-      #minibia-bot-panel .mb-main-column,
-      #minibia-bot-panel .mb-cave-column {
+      #mage-tuntun-panel .mb-side-column,
+      #mage-tuntun-panel .mb-main-column,
+      #mage-tuntun-panel .mb-cave-column {
         display: grid;
         gap: 10px;
       }
 
-      #minibia-bot-panel .mb-section {
+      #mage-tuntun-panel .mb-section {
         padding-top: 10px;
         border-top: 1px solid rgba(224, 200, 148, 0.16);
       }
 
-      #minibia-bot-panel .mb-column-section:first-child {
+      #mage-tuntun-panel .mb-column-section:first-child {
         padding-top: 0;
         border-top: 0;
       }
 
-      #minibia-bot-panel .mb-label {
+      #mage-tuntun-panel .mb-label {
         margin: 0 0 8px;
         color: #d3c49d;
         word-break: break-word;
       }
 
-      #minibia-bot-panel .mb-actions {
+      #mage-tuntun-panel .mb-actions {
         display: grid;
         gap: 6px;
       }
 
-      #minibia-bot-panel .mb-actions-inline-three {
+      #mage-tuntun-panel .mb-actions-inline-three {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
-      #minibia-bot-panel .mb-actions-inline-two {
+      #mage-tuntun-panel .mb-actions-inline-two {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      #minibia-bot-panel button {
+      #mage-tuntun-panel button {
         width: 100%;
         padding: 8px 10px;
         border: 1px solid rgba(224, 200, 148, 0.35);
@@ -718,12 +862,12 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         cursor: pointer;
       }
 
-      #minibia-bot-panel button:hover {
+      #mage-tuntun-panel button:hover {
         background: linear-gradient(180deg, #755f3d, #4f4028);
       }
 
-      #minibia-bot-panel input,
-      #minibia-bot-panel textarea {
+      #mage-tuntun-panel input,
+      #mage-tuntun-panel textarea {
         width: 100%;
         box-sizing: border-box;
         padding: 8px 10px;
@@ -734,105 +878,105 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         font: inherit;
       }
 
-      #minibia-bot-panel textarea {
+      #mage-tuntun-panel textarea {
         min-height: 72px;
         resize: vertical;
       }
 
-      #minibia-bot-panel .mb-toggle {
+      #mage-tuntun-panel .mb-toggle {
         display: flex;
         align-items: center;
         gap: 8px;
         color: #d3c49d;
       }
 
-      #minibia-bot-panel .mb-toggle input[type="checkbox"] {
+      #mage-tuntun-panel .mb-toggle input[type="checkbox"] {
         width: auto;
         margin: 0;
       }
 
-      #minibia-bot-panel .mb-row {
+      #mage-tuntun-panel .mb-row {
         display: grid;
         grid-template-columns: auto 1fr;
         align-items: center;
         gap: 8px;
       }
 
-      #minibia-bot-panel .mb-row-compact {
+      #mage-tuntun-panel .mb-row-compact {
         grid-template-columns: auto auto;
         justify-content: start;
       }
 
-      #minibia-bot-panel .mb-row .mb-toggle {
+      #mage-tuntun-panel .mb-row .mb-toggle {
         white-space: nowrap;
       }
 
-      #minibia-bot-panel .mb-row input[type="text"] {
+      #mage-tuntun-panel .mb-row input[type="text"] {
         min-width: 0;
       }
 
-      #minibia-bot-panel .mb-row-three {
+      #mage-tuntun-panel .mb-row-three {
         display: grid;
         grid-template-columns: auto minmax(120px, 1fr) 72px;
         align-items: center;
         gap: 8px;
       }
 
-      #minibia-bot-panel .mb-row-three input[type="text"],
-      #minibia-bot-panel .mb-row-three input[type="number"] {
+      #mage-tuntun-panel .mb-row-three input[type="text"],
+      #mage-tuntun-panel .mb-row-three input[type="number"] {
         min-width: 0;
       }
 
-      #minibia-bot-panel .mb-row-five {
+      #mage-tuntun-panel .mb-row-five {
         display: grid;
         grid-template-columns: auto 82px 72px 82px 72px;
         align-items: center;
         gap: 8px;
       }
 
-      #minibia-bot-panel .mb-row-five input[type="number"] {
+      #mage-tuntun-panel .mb-row-five input[type="number"] {
         min-width: 0;
       }
 
-      #minibia-bot-panel .mb-field-grid {
+      #mage-tuntun-panel .mb-field-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
       }
 
-      #minibia-bot-panel .mb-field {
+      #mage-tuntun-panel .mb-field {
         display: grid;
         gap: 4px;
       }
 
-      #minibia-bot-panel .mb-field-compact {
+      #mage-tuntun-panel .mb-field-compact {
         width: 96px;
         justify-self: end;
       }
 
-      #minibia-bot-panel .mb-field-label {
+      #mage-tuntun-panel .mb-field-label {
         color: #d3c49d;
         font-size: 11px;
       }
 
-      #minibia-bot-panel .mb-stack {
+      #mage-tuntun-panel .mb-stack {
         display: grid;
         gap: 8px;
       }
 
-      #minibia-bot-panel .mb-inline {
+      #mage-tuntun-panel .mb-inline {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 6px;
         align-items: center;
       }
 
-      #minibia-bot-panel .mb-list {
+      #mage-tuntun-panel .mb-list {
         display: grid;
         gap: 6px;
       }
 
-      #minibia-bot-panel .mb-list-row {
+      #mage-tuntun-panel .mb-list-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 6px;
@@ -840,19 +984,19 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         color: #d3c49d;
       }
 
-      #minibia-bot-panel .mb-creature-row {
+      #mage-tuntun-panel .mb-creature-row {
         padding: 6px 8px;
         border: 1px solid rgba(224, 200, 148, 0.14);
         border-radius: 8px;
         background: rgba(255, 244, 212, 0.04);
       }
 
-      #minibia-bot-panel .mb-creature-name {
+      #mage-tuntun-panel .mb-creature-name {
         color: #f7eccf;
         word-break: break-word;
       }
 
-      #minibia-bot-panel .mb-floor-label {
+      #mage-tuntun-panel .mb-floor-label {
         margin-top: 4px;
         color: #e2cf9c;
         font-size: 11px;
@@ -861,45 +1005,103 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         text-transform: uppercase;
       }
 
-      #minibia-bot-panel #minibia-bot-visible-creatures-list {
+      #mage-tuntun-panel #mage-tuntun-visible-creatures-list {
         max-height: 150px;
         overflow-y: auto;
         padding-right: 2px;
       }
 
-      #minibia-bot-panel #minibia-bot-panic-trusted-list {
+      #mage-tuntun-panel #mage-tuntun-panic-trusted-list {
         max-height: 140px;
         overflow-y: auto;
         padding-right: 2px;
       }
 
-      #minibia-bot-panel .mb-small-button {
+      #mage-tuntun-panel #mage-tuntun-cave-waypoint-list {
+        max-height: 150px;
+        overflow-y: auto;
+        padding: 2px 4px 2px 0;
+        scrollbar-width: thin;
+        scrollbar-color: #7a623f #201a14;
+      }
+
+      #mage-tuntun-panel #mage-tuntun-cave-waypoint-list::-webkit-scrollbar {
+        width: 7px;
+      }
+
+      #mage-tuntun-panel #mage-tuntun-cave-waypoint-list::-webkit-scrollbar-track {
+        background: #201a14;
+        border-radius: 4px;
+      }
+
+      #mage-tuntun-panel #mage-tuntun-cave-waypoint-list::-webkit-scrollbar-thumb {
+        background: #7a623f;
+        border-radius: 4px;
+      }
+
+      #mage-tuntun-panel .mb-tag-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 4px;
+        max-height: 85px;
+        overflow-y: auto;
+      }
+
+      #mage-tuntun-panel .mb-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #25201b;
+        border: 1px solid #4a3e2d;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 11px;
+        color: #f7eccf;
+      }
+
+      #mage-tuntun-panel .mb-chip-remove {
+        cursor: pointer;
+        color: #e27a7a;
+        font-weight: bold;
+        background: none;
+        border: none;
+        padding: 0 2px;
+        font-size: 12px;
+        line-height: 1;
+      }
+
+      #mage-tuntun-panel .mb-chip-remove:hover {
+        color: #ff4d4d;
+      }
+
+      #mage-tuntun-panel .mb-small-button {
         width: auto;
         padding: 4px 8px;
         border-radius: 6px;
       }
 
-      #minibia-bot-panel .mb-small-note {
+      #mage-tuntun-panel .mb-small-note {
         color: #b7a67d;
         font-size: 11px;
       }
 
-      #minibia-bot-panel .mb-note {
+      #mage-tuntun-panel .mb-note {
         margin-top: 8px;
         color: #b7a67d;
         font-size: 11px;
       }
 
       @media (max-width: 760px) {
-        #minibia-bot-panel {
+        #mage-tuntun-panel {
           width: min(720px, calc(100vw - 32px));
         }
 
-        #minibia-bot-panel .mb-body {
+        #mage-tuntun-panel .mb-body {
           grid-template-columns: 1fr;
         }
 
-        #minibia-bot-panel .mb-field-grid {
+        #mage-tuntun-panel .mb-field-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -907,124 +1109,232 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     document.head.appendChild(style);
 
     const panel = document.createElement("div");
-    panel.id = "minibia-bot-panel";
+    panel.id = "mage-tuntun-panel";
     panel.innerHTML = `
         <div class="mb-titlebar">
-        <div class="mb-title">Minibia Bot</div>
-        <button type="button" class="mb-icon-button" id="minibia-bot-collapse" aria-label="Minimize panel" title="Minimize">−</button>
+        <div>
+          <div class="mb-title">Mage Tuntun</div>
+          <div class="mb-small-note" id="mage-tuntun-profile">Profile: waiting for character</div>
+        </div>
+        <button type="button" class="mb-icon-button" id="mage-tuntun-collapse" aria-label="Minimize panel" title="Minimize">−</button>
       </div>
       <div class="mb-body">
         <div class="mb-main-column">
           <div class="mb-actions mb-column-section">
-            <button type="button" id="minibia-bot-reload">Reload Bot</button>
+            <label class="mb-field" for="mage-tuntun-profile-select">
+              <span class="mb-field-label">Configuration profile</span>
+              <select id="mage-tuntun-profile-select"></select>
+            </label>
+            <div class="mb-actions mb-actions-inline-two">
+              <button type="button" class="mb-small-button" id="mage-tuntun-profile-new">New profile</button>
+              <button type="button" class="mb-small-button" id="mage-tuntun-profile-character">Use character</button>
+            </div>
+            <button type="button" id="mage-tuntun-reload">Reload Bot</button>
           </div>
           <div class="mb-section mb-column-section">
-            <div class="mb-label" id="minibia-bot-home">Panic Runner Home: not set</div>
+            <div class="mb-label" id="mage-tuntun-home">Panic Runner Home: not set</div>
             <div class="mb-stack">
-              <button type="button" id="minibia-bot-set-home">Set Home</button>
+              <button type="button" id="mage-tuntun-set-home">Set Home</button>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-panic-unknown" />
+                <input type="checkbox" id="mage-tuntun-panic-unknown" />
                 <span>Unknown Player</span>
               </label>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-panic-health" />
+                <input type="checkbox" id="mage-tuntun-panic-health" />
                 <span>Lose Health</span>
               </label>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-panic-return" />
+                <input type="checkbox" id="mage-tuntun-panic-return" />
                 <span>Auto Return</span>
               </label>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-player-appear-alert" />
+                <input type="checkbox" id="mage-tuntun-player-appear-alert" />
                 <span>Sound: player appears</span>
               </label>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-npc-pause-automation" />
+                <input type="checkbox" id="mage-tuntun-npc-pause-automation" />
                 <span>Sound & stop Cavebot/Attack: NPC appears</span>
               </label>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-player-chat-alert" />
+                <input type="checkbox" id="mage-tuntun-player-chat-alert" />
                 <span>Sound: player chat</span>
               </label>
               <div class="mb-inline">
-                <input type="text" id="minibia-bot-panic-trusted-input" placeholder="Trusted name" />
-                <button type="button" class="mb-small-button" id="minibia-bot-panic-trusted-add">Add</button>
+                <input type="text" id="mage-tuntun-panic-trusted-input" placeholder="Trusted name" />
+                <button type="button" class="mb-small-button" id="mage-tuntun-panic-trusted-add">Add</button>
               </div>
-              <div class="mb-list" id="minibia-bot-panic-trusted-list"></div>
+              <div class="mb-list" id="mage-tuntun-panic-trusted-list"></div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
-            <div class="mb-label">GM Kill Switch</div>
+            <div class="mb-label" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>GM & Anti-Bot Detector</span>
+              <span id="mage-tuntun-gm-status" class="mb-small-note">Idle</span>
+            </div>
             <div class="mb-stack">
-              <div class="mb-inline">
-                <input type="text" id="minibia-bot-panic-gm-input" placeholder="Game master name" />
-                <button type="button" class="mb-small-button" id="minibia-bot-panic-gm-add">Add</button>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-gm-enabled" />
+                <span>GM Detector Enabled</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-gm-pause-hunting" />
+                <span>Stay paused while GM is on screen</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-gm-ignore-pz" />
+                <span>Ignore GMs in protection zone (PZ)</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-gm-react-name" />
+                <span>React if player/spawn creature says my name</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-gm-react-chat" />
+                <span>React to messages from configured staff</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-gm-auto-replies" />
+                <span>Send automatic replies when staff is detected</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-gm-sound" />
+                <span>Sound alarm when GM appears</span>
+              </label>
+
+              <div style="border-top: 1px solid #3d3122; padding-top: 6px; margin-top: 4px;">
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-captcha-enabled" />
+                  <span>Anti-Bot Watcher</span>
+                </label>
+                <div class="mb-inline" style="margin-top: 4px;">
+                  <label class="mb-toggle" style="flex: 1;">
+                    <input type="checkbox" id="mage-tuntun-captcha-sound" />
+                    <span>Anti-Bot Siren (Dual-Tone)</span>
+                  </label>
+                  <button type="button" class="mb-small-button" id="mage-tuntun-captcha-test-sound">Test Sound</button>
+                </div>
+                <label class="mb-toggle" style="margin-top: 4px;">
+                  <input type="checkbox" id="mage-tuntun-captcha-auto-solve" />
+                  <span>Auto-Solve (click yellow, 1 attempt)</span>
+                </label>
+                <div class="mb-small-note" style="margin-top: 2px;">Tries to click the yellow-highlighted answer once. If it fails, the alarm sounds for manual resolution.</div>
               </div>
-              <div class="mb-list" id="minibia-bot-panic-gm-list"></div>
+
+              <div style="border-top: 1px solid #3d3122; padding-top: 6px; margin-top: 4px;">
+                <div class="mb-small-note" style="margin-bottom: 2px;">Staff Names:</div>
+                <div class="mb-inline">
+                  <input type="text" id="mage-tuntun-gm-name-input" placeholder="Staff name..." />
+                  <button type="button" class="mb-small-button" id="mage-tuntun-gm-name-add">Add</button>
+                </div>
+                <div class="mb-tag-wrap" id="mage-tuntun-gm-name-chips"></div>
+              </div>
+
+              <div style="border-top: 1px solid #3d3122; padding-top: 6px; margin-top: 4px;">
+                <div class="mb-small-note" style="margin-bottom: 2px;">Primera respuesta (reacción inmediata):</div>
+                <div class="mb-inline">
+                  <input type="text" id="mage-tuntun-gm-first-reply-input" placeholder="Mensaje..." />
+                  <button type="button" class="mb-small-button" id="mage-tuntun-gm-first-reply-add">Agregar</button>
+                </div>
+                <div class="mb-tag-wrap" id="mage-tuntun-gm-first-reply-chips"></div>
+              </div>
+
+              <div style="border-top: 1px solid #3d3122; padding-top: 6px; margin-top: 4px;">
+                <div class="mb-small-note" style="margin-bottom: 2px;">Segunda respuesta (seguimiento):</div>
+                <div class="mb-inline">
+                  <input type="text" id="mage-tuntun-gm-second-reply-input" placeholder="Mensaje..." />
+                  <button type="button" class="mb-small-button" id="mage-tuntun-gm-second-reply-add">Agregar</button>
+                </div>
+                <div class="mb-tag-wrap" id="mage-tuntun-gm-second-reply-chips"></div>
+              </div>
+
+              <div class="mb-inline" style="border-top: 1px solid #3d3122; padding-top: 6px; margin-top: 4px;">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-gm-cooldown-min">
+                  <span class="mb-field-label">Don't react again (min)</span>
+                  <input type="number" id="mage-tuntun-gm-cooldown-min" min="1" max="120" placeholder="10" />
+                </label>
+              </div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
             <div class="mb-actions">
               <div class="mb-row-three">
                 <label class="mb-toggle">
-                  <input type="checkbox" id="minibia-bot-rune-enabled" />
+                  <input type="checkbox" id="mage-tuntun-rune-enabled" />
                   <span>Magic Level Trainer</span>
                 </label>
-                <input type="text" id="minibia-bot-rune-spell" placeholder="Spell words" />
-                <input type="number" id="minibia-bot-rune-mana" min="0" placeholder="Mana" />
+                <input type="text" id="mage-tuntun-rune-spell" placeholder="Spell words" />
+                <input type="number" id="mage-tuntun-rune-mana" min="0" placeholder="Mana" />
+              </div>
+              <div class="mb-row mb-row-compact">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-rune-casts-per-minute">
+                  <span class="mb-field-label">Casts per minute</span>
+                  <input type="number" id="mage-tuntun-rune-casts-per-minute" min="1" placeholder="15" />
+                </label>
+                <div class="mb-small-note">Casts are evenly spaced while training is active.</div>
+              </div>
+              <div class="mb-row mb-row-compact">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-rune-active-minutes">
+                  <span class="mb-field-label">Train (min)</span>
+                  <input type="number" id="mage-tuntun-rune-active-minutes" min="0" step="0.1" placeholder="0" />
+                </label>
+                <label class="mb-field mb-field-compact" for="mage-tuntun-rune-pause-minutes">
+                  <span class="mb-field-label">Pause (min)</span>
+                  <input type="number" id="mage-tuntun-rune-pause-minutes" min="0" step="0.1" placeholder="0" />
+                </label>
+                <div class="mb-small-note">Set both above 0 to repeat training and pause cycles.</div>
               </div>
               <div class="mb-row mb-row-compact">
                 <label class="mb-toggle">
-                  <input type="checkbox" id="minibia-bot-auto-eat-enabled" />
+                  <input type="checkbox" id="mage-tuntun-auto-eat-enabled" />
                   <span>Auto Eat</span>
                 </label>
-                <label class="mb-field mb-field-compact" for="minibia-bot-auto-eat-hotkey">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-auto-eat-hotkey">
                   <span class="mb-field-label">Eat Hotkey (1-12)</span>
-                  <input type="number" id="minibia-bot-auto-eat-hotkey" min="1" max="12" placeholder="10" />
+                  <input type="number" id="mage-tuntun-auto-eat-hotkey" min="1" max="12" placeholder="10" />
                 </label>
-                <label class="mb-field mb-field-compact" for="minibia-bot-auto-eat-mode">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-auto-eat-mode">
                   <span class="mb-field-label">Mode</span>
-                  <select id="minibia-bot-auto-eat-mode">
+                  <select id="mage-tuntun-auto-eat-mode">
                     <option value="whenHungry">When hungry</option>
                     <option value="interval">Interval</option>
                   </select>
                 </label>
-                <label class="mb-field mb-field-compact" for="minibia-bot-auto-eat-cooldown">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-auto-eat-cooldown">
                   <span class="mb-field-label">Cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-eat-cooldown" min="1000" placeholder="60000" />
+                  <input type="number" id="mage-tuntun-auto-eat-cooldown" min="1000" placeholder="60000" />
                 </label>
               </div>
               <div class="mb-row">
                 <label class="mb-toggle">
-                  <input type="checkbox" id="minibia-bot-auto-invisible-enabled" />
+                  <input type="checkbox" id="mage-tuntun-auto-invisible-enabled" />
                   <span>Auto Invisible</span>
                 </label>
                 <div class="mb-small-note">Casts utana vid whenever invisibility is not active.</div>
               </div>
               <div class="mb-row">
                 <label class="mb-toggle">
-                  <input type="checkbox" id="minibia-bot-auto-haste-enabled" />
+                  <input type="checkbox" id="mage-tuntun-auto-haste-enabled" />
                   <span>Auto Haste</span>
                 </label>
-                <label class="mb-field mb-field-compact" for="minibia-bot-auto-haste-spell">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-auto-haste-spell">
                   <span class="mb-field-label">Spell</span>
-                  <input type="text" id="minibia-bot-auto-haste-spell" placeholder="utani hur" />
+                  <input type="text" id="mage-tuntun-auto-haste-spell" placeholder="utani hur" />
                 </label>
-                <label class="mb-field mb-field-compact" for="minibia-bot-auto-haste-cooldown">
+                <label class="mb-field mb-field-compact" for="mage-tuntun-auto-haste-cooldown">
                   <span class="mb-field-label">Recast cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-haste-cooldown" min="1000" placeholder="2000" />
+                  <input type="number" id="mage-tuntun-auto-haste-cooldown" min="1000" placeholder="2000" />
                 </label>
               </div>
               <div class="mb-row">
                 <label class="mb-toggle">
-                  <input type="checkbox" id="minibia-bot-auto-magic-shield-enabled" />
+                  <input type="checkbox" id="mage-tuntun-auto-magic-shield-enabled" />
                   <span>Auto Utamo Vita</span>
                 </label>
                 <div class="mb-small-note">Casts utamo vita whenever magic shield is not active.</div>
               </div>
               <div class="mb-row">
                 <label class="mb-toggle">
-                  <input type="checkbox" id="minibia-bot-equip-ring-enabled" />
+                  <input type="checkbox" id="mage-tuntun-equip-ring-enabled" />
                   <span>Equip Ring</span>
                 </label>
                 <div></div>
@@ -1038,87 +1348,87 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
         <div class="mb-side-column">
           <div class="mb-section mb-column-section">
             <div class="mb-label">Xray</div>
-            <button type="button" class="mb-small-button" id="minibia-bot-xray-overlay-toggle">Disable Overlay</button>
-            <div class="mb-small-note" id="minibia-bot-xray-overlay-status">Overlay: on</div>
-            <label class="mb-field" for="minibia-bot-xray-floor-select">
+            <button type="button" class="mb-small-button" id="mage-tuntun-xray-overlay-toggle">Disable Overlay</button>
+            <div class="mb-small-note" id="mage-tuntun-xray-overlay-status">Overlay: on</div>
+            <label class="mb-field" for="mage-tuntun-xray-floor-select">
               <span class="mb-field-label">Floor Filter</span>
-              <select id="minibia-bot-xray-floor-select">
+              <select id="mage-tuntun-xray-floor-select">
                 <option value="all">All floors</option>
               </select>
             </label>
-            <div class="mb-list" id="minibia-bot-visible-creatures-list"></div>
+            <div class="mb-list" id="mage-tuntun-visible-creatures-list"></div>
           </div>
           <div class="mb-section mb-column-section">
             <div class="mb-label">Auto Heal</div>
             <div class="mb-stack">
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-auto-heal-enabled" />
+                <input type="checkbox" id="mage-tuntun-auto-heal-enabled" />
                 <span>Enable Auto Heal</span>
               </label>
               <div class="mb-field-grid">
-                <label class="mb-field" for="minibia-bot-auto-heal-min-hp-percent">
+                <label class="mb-field" for="mage-tuntun-auto-heal-min-hp-percent">
                   <span class="mb-field-label">Heal HP below (%)</span>
-                  <input type="number" id="minibia-bot-auto-heal-min-hp-percent" min="1" max="100" placeholder="50" />
+                  <input type="number" id="mage-tuntun-auto-heal-min-hp-percent" min="1" max="100" placeholder="80" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-heal-hp-hotkey">
+                <label class="mb-field" for="mage-tuntun-auto-heal-hp-hotkey">
                   <span class="mb-field-label">HP Hotkey (1-12)</span>
-                  <input type="number" id="minibia-bot-auto-heal-hp-hotkey" min="1" max="12" placeholder="1" />
+                  <input type="number" id="mage-tuntun-auto-heal-hp-hotkey" min="1" max="12" placeholder="8" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-heal-min-mana-percent">
+                <label class="mb-field" for="mage-tuntun-auto-heal-min-mana-percent">
                   <span class="mb-field-label">Heal mana below (%)</span>
-                  <input type="number" id="minibia-bot-auto-heal-min-mana-percent" min="1" max="100" placeholder="50" />
+                  <input type="number" id="mage-tuntun-auto-heal-min-mana-percent" min="1" max="100" placeholder="30" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-heal-mana-hotkey">
+                <label class="mb-field" for="mage-tuntun-auto-heal-mana-hotkey">
                   <span class="mb-field-label">Mana Hotkey (1-12)</span>
-                  <input type="number" id="minibia-bot-auto-heal-mana-hotkey" min="1" max="12" placeholder="2" />
+                  <input type="number" id="mage-tuntun-auto-heal-mana-hotkey" min="1" max="12" placeholder="4" />
                 </label>
               </div>
               <div class="mb-field-grid">
-                <label class="mb-field" for="minibia-bot-auto-heal-hp-cooldown">
+                <label class="mb-field" for="mage-tuntun-auto-heal-hp-cooldown">
                   <span class="mb-field-label">HP spell cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-heal-hp-cooldown" min="1000" placeholder="2000" />
+                  <input type="number" id="mage-tuntun-auto-heal-hp-cooldown" min="1000" placeholder="1800" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-heal-mana-cooldown">
+                <label class="mb-field" for="mage-tuntun-auto-heal-mana-cooldown">
                   <span class="mb-field-label">Mana spell cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-heal-mana-cooldown" min="1000" placeholder="1000" />
+                  <input type="number" id="mage-tuntun-auto-heal-mana-cooldown" min="1000" placeholder="1000" />
                 </label>
               </div>
               <div class="mb-small-note">Checks about twenty times per second. HP is used before mana; each hotkey has its own spell cooldown.</div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
-            <div class="mb-label">Talk</div>
+            <div class="mb-label">Auto Responder / Chat</div>
             <div class="mb-stack">
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-talk-enabled" />
-                <span>Enable Auto Reply</span>
+                <input type="checkbox" id="mage-tuntun-talk-enabled" />
+                <span>Activar Auto Responder</span>
               </label>
-              <input type="password" id="minibia-bot-talk-api-key" placeholder="Gemini API key" />
-              <textarea id="minibia-bot-talk-prompt" placeholder="Reply style prompt"></textarea>
-              <div class="mb-small-note" id="minibia-bot-talk-status">Status: idle</div>
-              <div class="mb-small-note">Replies only to the newest unseen message in Default chat.</div>
-              <div class="mb-small-note">It will not reply to itself and will not admit it is a bot.</div>
+              <input type="password" id="mage-tuntun-talk-api-key" placeholder="Gemini API key (opcional para IA)" />
+              <textarea id="mage-tuntun-talk-prompt" placeholder="Instrucciones de respuesta (prompt estilo jugador)..."></textarea>
+              <div class="mb-small-note" id="mage-tuntun-talk-status">Estado: inactivo</div>
+              <div class="mb-small-note">Responde en Default a jugadores cercanos en el spawn.</div>
+              <div class="mb-small-note">Sin API key usa respuestas rápidas de jugador. Nunca admite ser bot.</div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
             <div class="mb-label">Auto Sio</div>
             <div class="mb-stack">
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-auto-sio-enabled" />
+                <input type="checkbox" id="mage-tuntun-auto-sio-enabled" />
                 <span>Enable Auto Sio</span>
               </label>
-              <input type="text" id="minibia-bot-auto-sio-target" placeholder="Player name" />
+              <input type="text" id="mage-tuntun-auto-sio-target" placeholder="Player name" />
               <div class="mb-field-grid">
-                <label class="mb-field" for="minibia-bot-auto-sio-hp-percent">
+                <label class="mb-field" for="mage-tuntun-auto-sio-hp-percent">
                   <span class="mb-field-label">Heal below (%)</span>
-                  <input type="number" id="minibia-bot-auto-sio-hp-percent" min="1" max="100" placeholder="50" />
+                  <input type="number" id="mage-tuntun-auto-sio-hp-percent" min="1" max="100" placeholder="50" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-sio-cooldown">
+                <label class="mb-field" for="mage-tuntun-auto-sio-cooldown">
                   <span class="mb-field-label">Cooldown (ms)</span>
-                  <input type="number" id="minibia-bot-auto-sio-cooldown" min="1000" placeholder="2000" />
+                  <input type="number" id="mage-tuntun-auto-sio-cooldown" min="1000" placeholder="2000" />
                 </label>
               </div>
-              <input type="text" id="minibia-bot-auto-sio-spell" placeholder="exura sio" />
+              <input type="text" id="mage-tuntun-auto-sio-spell" placeholder="exura sio" />
               <div class="mb-small-note">Casts only while the named player is visible on the same floor.</div>
             </div>
           </div>
@@ -1128,79 +1438,81 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
             <div class="mb-label">Cave Bot</div>
             <div class="mb-stack">
               <div class="mb-field-grid">
-                <label class="mb-field" for="minibia-bot-cave-preset-select">
-                  <select id="minibia-bot-cave-preset-select"></select>
+                <label class="mb-field" for="mage-tuntun-cave-preset-select">
+                  <select id="mage-tuntun-cave-preset-select"></select>
                 </label>
               </div>
               <div class="mb-actions mb-actions-inline-two">
-                <button type="button" class="mb-small-button" id="minibia-bot-cave-preset-new">New</button>
-                <button type="button" class="mb-small-button" id="minibia-bot-cave-preset-delete">Delete</button>
+                <button type="button" class="mb-small-button" id="mage-tuntun-cave-preset-new">New</button>
+                <button type="button" class="mb-small-button" id="mage-tuntun-cave-preset-delete">Delete</button>
               </div>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-cave-unexpected-monster-alert" />
+                <input type="checkbox" id="mage-tuntun-cave-unexpected-monster-alert" />
                 <span>Stop on unexpected monster</span>
               </label>
-              <label class="mb-field" for="minibia-bot-cave-allowed-monsters">
+              <label class="mb-field" for="mage-tuntun-cave-allowed-monsters">
                 <span class="mb-field-label">Allowed monsters (comma separated)</span>
-                <input type="text" id="minibia-bot-cave-allowed-monsters" placeholder="Cyclops, Cyclops Drone" />
+                <input type="text" id="mage-tuntun-cave-allowed-monsters" placeholder="Cyclops, Cyclops Drone" />
               </label>
               <div class="mb-small-note">This list belongs to the selected preset. An unlisted monster stops Cavebot and Auto Attack.</div>
               <div class="mb-actions mb-actions-inline-two">
-                <button type="button" class="mb-small-button" id="minibia-bot-cave-record">Record Spot</button>
-                <button type="button" class="mb-small-button" id="minibia-bot-cave-remove-last">Remove Last</button>
+                <button type="button" class="mb-small-button" id="mage-tuntun-cave-record">Record Spot</button>
+                <button type="button" class="mb-small-button" id="mage-tuntun-cave-remove-last">Remove Last</button>
               </div>
-              <div class="mb-small-note" id="minibia-bot-cave-closest">Closest start: no waypoints</div>
-              <div class="mb-small-note" id="minibia-bot-cave-transition-status">Transitions learned: none</div>
+              <div class="mb-small-note" style="margin-top: 4px;">Waypoints</div>
+              <div class="mb-list" id="mage-tuntun-cave-waypoint-list"></div>
+              <div class="mb-small-note" id="mage-tuntun-cave-closest">Closest start: no waypoints</div>
+              <div class="mb-small-note" id="mage-tuntun-cave-transition-status">Transitions learned: none</div>
               <div class="mb-actions mb-actions-inline-two">
-                <button type="button" class="mb-small-button" id="minibia-bot-cave-start">Start</button>
-                <button type="button" class="mb-small-button" id="minibia-bot-cave-stop">Stop</button>
+                <button type="button" class="mb-small-button" id="mage-tuntun-cave-start">Start</button>
+                <button type="button" class="mb-small-button" id="mage-tuntun-cave-stop">Stop</button>
               </div>
-              <div class="mb-small-note" id="minibia-bot-cave-status">Status: no waypoints</div>
+              <div class="mb-small-note" id="mage-tuntun-cave-status">Status: no waypoints</div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
             <div class="mb-label">Auto Attack</div>
             <div class="mb-stack">
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-auto-attack-enabled" />
+                <input type="checkbox" id="mage-tuntun-auto-attack-enabled" />
                 <span>Enable Auto Attack</span>
               </label>
               <label class="mb-toggle">
-                <input type="checkbox" id="minibia-bot-auto-attack-melee" />
+                <input type="checkbox" id="mage-tuntun-auto-attack-melee" />
                 <span>Melee Mode</span>
               </label>
-              <label class="mb-field" for="minibia-bot-auto-attack-movement">
+              <label class="mb-field" for="mage-tuntun-auto-attack-movement">
                 <span class="mb-field-label">Movement</span>
-                <select id="minibia-bot-auto-attack-movement">
+                <select id="mage-tuntun-auto-attack-movement">
                   <option value="auto">Default (melee setting)</option>
                   <option value="kite">Kite (keep distance)</option>
                 </select>
               </label>
               <div class="mb-field-grid">
-                <label class="mb-field" for="minibia-bot-auto-attack-kite-min-distance">
+                <label class="mb-field" for="mage-tuntun-auto-attack-kite-min-distance">
                   <span class="mb-field-label">Kite min distance</span>
-                  <input type="number" id="minibia-bot-auto-attack-kite-min-distance" min="1" placeholder="3" />
+                  <input type="number" id="mage-tuntun-auto-attack-kite-min-distance" min="1" placeholder="3" />
                 </label>
-                <label class="mb-field" for="minibia-bot-auto-attack-kite-max-distance">
+                <label class="mb-field" for="mage-tuntun-auto-attack-kite-max-distance">
                   <span class="mb-field-label">Kite max distance</span>
-                  <input type="number" id="minibia-bot-auto-attack-kite-max-distance" min="1" placeholder="5" />
+                  <input type="number" id="mage-tuntun-auto-attack-kite-max-distance" min="1" placeholder="5" />
                 </label>
               </div>
-              <label class="mb-field" for="minibia-bot-auto-attack-ignore-monsters">
+              <label class="mb-field" for="mage-tuntun-auto-attack-ignore-monsters">
                 <span class="mb-field-label">Ignore monsters (comma separated)</span>
-                <input type="text" id="minibia-bot-auto-attack-ignore-monsters" placeholder="Rat, Deer" />
+                <input type="text" id="mage-tuntun-auto-attack-ignore-monsters" placeholder="Rat, Deer" />
               </label>
-              <label class="mb-field" for="minibia-bot-auto-attack-hotkey">
+              <label class="mb-field" for="mage-tuntun-auto-attack-hotkey">
                 <span class="mb-field-label">Target Hotkey (1-12)</span>
-                <input type="number" id="minibia-bot-auto-attack-hotkey" min="1" max="12" placeholder="3" />
+                <input type="number" id="mage-tuntun-auto-attack-hotkey" min="1" max="12" placeholder="3" />
               </label>
-              <label class="mb-field" for="minibia-bot-auto-attack-rune-hotkey">
+              <label class="mb-field" for="mage-tuntun-auto-attack-rune-hotkey">
                 <span class="mb-field-label">Action Hotkey (1-12)</span>
-                <input type="number" id="minibia-bot-auto-attack-rune-hotkey" min="1" max="12" placeholder="4" />
+                <input type="number" id="mage-tuntun-auto-attack-rune-hotkey" min="1" max="12" placeholder="4" />
               </label>
-              <label class="mb-field" for="minibia-bot-auto-attack-rune-cooldown">
+              <label class="mb-field" for="mage-tuntun-auto-attack-rune-cooldown">
                 <span class="mb-field-label">Action cooldown (ms)</span>
-                <input type="number" id="minibia-bot-auto-attack-rune-cooldown" min="1000" placeholder="2000" />
+                <input type="number" id="mage-tuntun-auto-attack-rune-cooldown" min="1000" placeholder="2000" />
               </label>
               <div class="mb-small-note">Melee follows adjacent; kite keeps the configured range. The action hotkey is used on the current target at its configured cooldown.</div>
             </div>
@@ -1226,66 +1538,88 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     enableDrag(panel);
     setPanelCollapsed(panel, getSavedPanelCollapsed());
 
-    const spellInput = panel.querySelector("#minibia-bot-rune-spell");
-    const manaInput = panel.querySelector("#minibia-bot-rune-mana");
-    const runeEnabledInput = panel.querySelector("#minibia-bot-rune-enabled");
-    const autoEatEnabledInput = panel.querySelector("#minibia-bot-auto-eat-enabled");
-    const autoEatHotkeyInput = panel.querySelector("#minibia-bot-auto-eat-hotkey");
-    const autoEatModeInput = panel.querySelector("#minibia-bot-auto-eat-mode");
-    const autoEatCooldownInput = panel.querySelector("#minibia-bot-auto-eat-cooldown");
-    const autoInvisibleEnabledInput = panel.querySelector("#minibia-bot-auto-invisible-enabled");
-    const autoMagicShieldEnabledInput = panel.querySelector("#minibia-bot-auto-magic-shield-enabled");
-    const autoHasteEnabledInput = panel.querySelector("#minibia-bot-auto-haste-enabled");
-    const autoHasteSpellInput = panel.querySelector("#minibia-bot-auto-haste-spell");
-    const autoHasteCooldownInput = panel.querySelector("#minibia-bot-auto-haste-cooldown");
-    const equipRingEnabledInput = panel.querySelector("#minibia-bot-equip-ring-enabled");
-    const autoHealEnabledInput = panel.querySelector("#minibia-bot-auto-heal-enabled");
-    const autoHealMinHpPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-hp-percent");
-    const autoHealHpHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-hp-hotkey");
-    const autoHealMinManaPercentInput = panel.querySelector("#minibia-bot-auto-heal-min-mana-percent");
-    const autoHealManaHotkeyInput = panel.querySelector("#minibia-bot-auto-heal-mana-hotkey");
-    const autoHealHpCooldownInput = panel.querySelector("#minibia-bot-auto-heal-hp-cooldown");
-    const autoHealManaCooldownInput = panel.querySelector("#minibia-bot-auto-heal-mana-cooldown");
-    const autoSioEnabledInput = panel.querySelector("#minibia-bot-auto-sio-enabled");
-    const autoSioTargetInput = panel.querySelector("#minibia-bot-auto-sio-target");
-    const autoSioHpPercentInput = panel.querySelector("#minibia-bot-auto-sio-hp-percent");
-    const autoSioCooldownInput = panel.querySelector("#minibia-bot-auto-sio-cooldown");
-    const autoSioSpellInput = panel.querySelector("#minibia-bot-auto-sio-spell");
-    const autoAttackEnabledInput = panel.querySelector("#minibia-bot-auto-attack-enabled");
-    const autoAttackMeleeInput = panel.querySelector("#minibia-bot-auto-attack-melee");
-    const autoAttackMovementInput = panel.querySelector("#minibia-bot-auto-attack-movement");
-    const autoAttackKiteMinDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-min-distance");
-    const autoAttackKiteMaxDistanceInput = panel.querySelector("#minibia-bot-auto-attack-kite-max-distance");
-    const autoAttackIgnoreMonstersInput = panel.querySelector("#minibia-bot-auto-attack-ignore-monsters");
-    const autoAttackHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-hotkey");
-    const autoAttackRuneHotkeyInput = panel.querySelector("#minibia-bot-auto-attack-rune-hotkey");
-    const autoAttackRuneCooldownInput = panel.querySelector("#minibia-bot-auto-attack-rune-cooldown");
-    const talkEnabledInput = panel.querySelector("#minibia-bot-talk-enabled");
-    const talkApiKeyInput = panel.querySelector("#minibia-bot-talk-api-key");
-    const talkPromptInput = panel.querySelector("#minibia-bot-talk-prompt");
-    const panicGmNameInput = panel.querySelector("#minibia-bot-panic-gm-input");
-    const panicGmAddButton = panel.querySelector("#minibia-bot-panic-gm-add");
-    const panicUnknownInput = panel.querySelector("#minibia-bot-panic-unknown");
-    const panicHealthInput = panel.querySelector("#minibia-bot-panic-health");
-    const panicReturnInput = panel.querySelector("#minibia-bot-panic-return");
-    const playerAppearAlertInput = panel.querySelector("#minibia-bot-player-appear-alert");
-    const npcPauseAutomationInput = panel.querySelector("#minibia-bot-npc-pause-automation");
-    const playerChatAlertInput = panel.querySelector("#minibia-bot-player-chat-alert");
-    const panicTrustedInput = panel.querySelector("#minibia-bot-panic-trusted-input");
-    const panicTrustedAddButton = panel.querySelector("#minibia-bot-panic-trusted-add");
-    const xrayOverlayButton = panel.querySelector("#minibia-bot-xray-overlay-toggle");
-    const xrayFloorSelect = panel.querySelector("#minibia-bot-xray-floor-select");
-    const collapseButton = panel.querySelector("#minibia-bot-collapse");
-    const reloadButton = panel.querySelector("#minibia-bot-reload");
-    const caveRecordButton = panel.querySelector("#minibia-bot-cave-record");
-    const caveRemoveLastButton = panel.querySelector("#minibia-bot-cave-remove-last");
-    const caveStartButton = panel.querySelector("#minibia-bot-cave-start");
-    const caveStopButton = panel.querySelector("#minibia-bot-cave-stop");
-    const cavePresetSelect = panel.querySelector("#minibia-bot-cave-preset-select");
-    const cavePresetNewButton = panel.querySelector("#minibia-bot-cave-preset-new");
-    const cavePresetDeleteButton = panel.querySelector("#minibia-bot-cave-preset-delete");
-    const caveUnexpectedMonsterAlertInput = panel.querySelector("#minibia-bot-cave-unexpected-monster-alert");
-    const caveAllowedMonstersInput = panel.querySelector("#minibia-bot-cave-allowed-monsters");
+    const spellInput = panel.querySelector("#mage-tuntun-rune-spell");
+    const profileSelect = panel.querySelector("#mage-tuntun-profile-select");
+    const newProfileButton = panel.querySelector("#mage-tuntun-profile-new");
+    const characterProfileButton = panel.querySelector("#mage-tuntun-profile-character");
+    const manaInput = panel.querySelector("#mage-tuntun-rune-mana");
+    const runeEnabledInput = panel.querySelector("#mage-tuntun-rune-enabled");
+    const runeCastsPerMinuteInput = panel.querySelector("#mage-tuntun-rune-casts-per-minute");
+    const runeActiveMinutesInput = panel.querySelector("#mage-tuntun-rune-active-minutes");
+    const runePauseMinutesInput = panel.querySelector("#mage-tuntun-rune-pause-minutes");
+    const autoEatEnabledInput = panel.querySelector("#mage-tuntun-auto-eat-enabled");
+    const autoEatHotkeyInput = panel.querySelector("#mage-tuntun-auto-eat-hotkey");
+    const autoEatModeInput = panel.querySelector("#mage-tuntun-auto-eat-mode");
+    const autoEatCooldownInput = panel.querySelector("#mage-tuntun-auto-eat-cooldown");
+    const autoInvisibleEnabledInput = panel.querySelector("#mage-tuntun-auto-invisible-enabled");
+    const autoMagicShieldEnabledInput = panel.querySelector("#mage-tuntun-auto-magic-shield-enabled");
+    const autoHasteEnabledInput = panel.querySelector("#mage-tuntun-auto-haste-enabled");
+    const autoHasteSpellInput = panel.querySelector("#mage-tuntun-auto-haste-spell");
+    const autoHasteCooldownInput = panel.querySelector("#mage-tuntun-auto-haste-cooldown");
+    const equipRingEnabledInput = panel.querySelector("#mage-tuntun-equip-ring-enabled");
+    const autoHealEnabledInput = panel.querySelector("#mage-tuntun-auto-heal-enabled");
+    const autoHealMinHpPercentInput = panel.querySelector("#mage-tuntun-auto-heal-min-hp-percent");
+    const autoHealHpHotkeyInput = panel.querySelector("#mage-tuntun-auto-heal-hp-hotkey");
+    const autoHealMinManaPercentInput = panel.querySelector("#mage-tuntun-auto-heal-min-mana-percent");
+    const autoHealManaHotkeyInput = panel.querySelector("#mage-tuntun-auto-heal-mana-hotkey");
+    const autoHealHpCooldownInput = panel.querySelector("#mage-tuntun-auto-heal-hp-cooldown");
+    const autoHealManaCooldownInput = panel.querySelector("#mage-tuntun-auto-heal-mana-cooldown");
+    const autoSioEnabledInput = panel.querySelector("#mage-tuntun-auto-sio-enabled");
+    const autoSioTargetInput = panel.querySelector("#mage-tuntun-auto-sio-target");
+    const autoSioHpPercentInput = panel.querySelector("#mage-tuntun-auto-sio-hp-percent");
+    const autoSioCooldownInput = panel.querySelector("#mage-tuntun-auto-sio-cooldown");
+    const autoSioSpellInput = panel.querySelector("#mage-tuntun-auto-sio-spell");
+    const autoAttackEnabledInput = panel.querySelector("#mage-tuntun-auto-attack-enabled");
+    const autoAttackMeleeInput = panel.querySelector("#mage-tuntun-auto-attack-melee");
+    const autoAttackMovementInput = panel.querySelector("#mage-tuntun-auto-attack-movement");
+    const autoAttackKiteMinDistanceInput = panel.querySelector("#mage-tuntun-auto-attack-kite-min-distance");
+    const autoAttackKiteMaxDistanceInput = panel.querySelector("#mage-tuntun-auto-attack-kite-max-distance");
+    const autoAttackIgnoreMonstersInput = panel.querySelector("#mage-tuntun-auto-attack-ignore-monsters");
+    const autoAttackHotkeyInput = panel.querySelector("#mage-tuntun-auto-attack-hotkey");
+    const autoAttackRuneHotkeyInput = panel.querySelector("#mage-tuntun-auto-attack-rune-hotkey");
+    const autoAttackRuneCooldownInput = panel.querySelector("#mage-tuntun-auto-attack-rune-cooldown");
+    const talkEnabledInput = panel.querySelector("#mage-tuntun-talk-enabled");
+    const talkApiKeyInput = panel.querySelector("#mage-tuntun-talk-api-key");
+    const talkPromptInput = panel.querySelector("#mage-tuntun-talk-prompt");
+    const gmEnabledInput = panel.querySelector("#mage-tuntun-gm-enabled");
+    const gmPauseHuntingInput = panel.querySelector("#mage-tuntun-gm-pause-hunting");
+    const gmIgnorePzInput = panel.querySelector("#mage-tuntun-gm-ignore-pz");
+    const gmReactNameInput = panel.querySelector("#mage-tuntun-gm-react-name");
+    const gmReactChatInput = panel.querySelector("#mage-tuntun-gm-react-chat");
+    const gmAutoRepliesInput = panel.querySelector("#mage-tuntun-gm-auto-replies");
+    const gmSoundInput = panel.querySelector("#mage-tuntun-gm-sound");
+    const captchaEnabledInput = panel.querySelector("#mage-tuntun-captcha-enabled");
+    const captchaSoundInput = panel.querySelector("#mage-tuntun-captcha-sound");
+    const captchaAutoSolveInput = panel.querySelector("#mage-tuntun-captcha-auto-solve");
+    const captchaTestSoundButton = panel.querySelector("#mage-tuntun-captcha-test-sound");
+    const gmNameInput = panel.querySelector("#mage-tuntun-gm-name-input");
+    const gmNameAddButton = panel.querySelector("#mage-tuntun-gm-name-add");
+    const gmFirstReplyInput = panel.querySelector("#mage-tuntun-gm-first-reply-input");
+    const gmFirstReplyAddButton = panel.querySelector("#mage-tuntun-gm-first-reply-add");
+    const gmSecondReplyInput = panel.querySelector("#mage-tuntun-gm-second-reply-input");
+    const gmSecondReplyAddButton = panel.querySelector("#mage-tuntun-gm-second-reply-add");
+    const gmCooldownInput = panel.querySelector("#mage-tuntun-gm-cooldown-min");
+    const panicUnknownInput = panel.querySelector("#mage-tuntun-panic-unknown");
+    const panicHealthInput = panel.querySelector("#mage-tuntun-panic-health");
+    const panicReturnInput = panel.querySelector("#mage-tuntun-panic-return");
+    const playerAppearAlertInput = panel.querySelector("#mage-tuntun-player-appear-alert");
+    const npcPauseAutomationInput = panel.querySelector("#mage-tuntun-npc-pause-automation");
+    const playerChatAlertInput = panel.querySelector("#mage-tuntun-player-chat-alert");
+    const panicTrustedInput = panel.querySelector("#mage-tuntun-panic-trusted-input");
+    const panicTrustedAddButton = panel.querySelector("#mage-tuntun-panic-trusted-add");
+    const xrayOverlayButton = panel.querySelector("#mage-tuntun-xray-overlay-toggle");
+    const xrayFloorSelect = panel.querySelector("#mage-tuntun-xray-floor-select");
+    const collapseButton = panel.querySelector("#mage-tuntun-collapse");
+    const reloadButton = panel.querySelector("#mage-tuntun-reload");
+    const caveRecordButton = panel.querySelector("#mage-tuntun-cave-record");
+    const caveRemoveLastButton = panel.querySelector("#mage-tuntun-cave-remove-last");
+    const caveStartButton = panel.querySelector("#mage-tuntun-cave-start");
+    const caveStopButton = panel.querySelector("#mage-tuntun-cave-stop");
+    const cavePresetSelect = panel.querySelector("#mage-tuntun-cave-preset-select");
+    const cavePresetNewButton = panel.querySelector("#mage-tuntun-cave-preset-new");
+    const cavePresetDeleteButton = panel.querySelector("#mage-tuntun-cave-preset-delete");
+    const caveUnexpectedMonsterAlertInput = panel.querySelector("#mage-tuntun-cave-unexpected-monster-alert");
+    const caveAllowedMonstersInput = panel.querySelector("#mage-tuntun-cave-allowed-monsters");
 
     if (collapseButton) {
       collapseButton.addEventListener("click", () => {
@@ -1296,7 +1630,42 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
 
     if (reloadButton) {
       reloadButton.addEventListener("click", () => {
-        window.minibiaBotReload?.();
+        window.mageTuntunReload?.();
+      });
+    }
+
+    function rebootWithProfile(changeProfile) {
+      // Stop and persist the currently active profile before changing the
+      // storage target; otherwise module shutdown could write into the new one.
+      bot.destroy?.();
+      window.mageTuntun = null;
+      if (changeProfile?.() === false) {
+        window.mageTuntunReload?.();
+        return;
+      }
+      window.mageTuntunReload?.();
+    }
+
+    if (profileSelect) {
+      profileSelect.addEventListener("change", () => {
+        const selected = profileSelect.value;
+        rebootWithProfile(() => selected === "__character__"
+          ? bot.useCharacterProfile?.()
+          : bot.selectProfile?.(selected));
+      });
+    }
+
+    if (newProfileButton) {
+      newProfileButton.addEventListener("click", () => {
+        const name = window.prompt("Profile name (for example Mage or Paladin):");
+        if (!name?.trim()) return;
+        rebootWithProfile(() => bot.createProfile?.(name));
+      });
+    }
+
+    if (characterProfileButton) {
+      characterProfileButton.addEventListener("click", () => {
+        rebootWithProfile(() => bot.useCharacterProfile?.());
       });
     }
 
@@ -1322,38 +1691,140 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       renderTrustedNames();
     }
 
-    function addGameMasterName() {
-      const rawName = panicGmNameInput?.value?.trim() || "";
-      if (!rawName) {
-        return;
+    function addGmStaffName() {
+      const rawName = gmNameInput?.value?.trim() || "";
+      if (!rawName) return;
+      const current = bot.gm?.config?.staffNames || [];
+      if (!current.some((n) => n.toLowerCase() === rawName.toLowerCase())) {
+        bot.gm?.updateConfig({ staffNames: [...current, rawName] });
+        renderGmStaffNames();
       }
-
-      const currentNames = bot.panic?.config?.gameMasterNames || [];
-      const exists = currentNames.some(
-        (name) => String(name).trim().toLowerCase() === rawName.toLowerCase()
-      );
-
-      if (!exists) {
-        bot.panic.updateConfig({ gameMasterNames: [...currentNames, rawName] });
-      }
-
-      if (panicGmNameInput) {
-        panicGmNameInput.value = "";
-      }
-
-      renderGameMasterNames();
+      if (gmNameInput) gmNameInput.value = "";
     }
 
-    if (panicGmAddButton) {
-      panicGmAddButton.addEventListener("click", addGameMasterName);
+    function addGmFirstReply() {
+      const rawMsg = gmFirstReplyInput?.value?.trim() || "";
+      if (!rawMsg) return;
+      const current = bot.gm?.config?.firstReplies || [];
+      bot.gm?.updateConfig({ firstReplies: [...current, rawMsg] });
+      renderGmFirstReplies();
+      if (gmFirstReplyInput) gmFirstReplyInput.value = "";
     }
 
-    if (panicGmNameInput) {
-      panicGmNameInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          addGameMasterName();
+    function addGmSecondReply() {
+      const rawMsg = gmSecondReplyInput?.value?.trim() || "";
+      if (!rawMsg) return;
+      const current = bot.gm?.config?.secondReplies || [];
+      bot.gm?.updateConfig({ secondReplies: [...current, rawMsg] });
+      renderGmSecondReplies();
+      if (gmSecondReplyInput) gmSecondReplyInput.value = "";
+    }
+
+    if (gmNameAddButton) gmNameAddButton.addEventListener("click", addGmStaffName);
+    if (gmNameInput) {
+      gmNameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addGmStaffName();
         }
+      });
+    }
+
+    if (gmFirstReplyAddButton) gmFirstReplyAddButton.addEventListener("click", addGmFirstReply);
+    if (gmFirstReplyInput) {
+      gmFirstReplyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addGmFirstReply();
+        }
+      });
+    }
+
+    if (gmSecondReplyAddButton) gmSecondReplyAddButton.addEventListener("click", addGmSecondReply);
+    if (gmSecondReplyInput) {
+      gmSecondReplyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addGmSecondReply();
+        }
+      });
+    }
+
+    if (gmEnabledInput) {
+      gmEnabledInput.addEventListener("change", () => {
+        if (gmEnabledInput.checked) {
+          bot.gm?.start();
+        } else {
+          bot.gm?.stop();
+        }
+        refreshGmStatus();
+      });
+    }
+
+    if (gmPauseHuntingInput) {
+      gmPauseHuntingInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ pauseHuntingOnGm: gmPauseHuntingInput.checked });
+      });
+    }
+
+    if (gmIgnorePzInput) {
+      gmIgnorePzInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ ignoreGmInPz: gmIgnorePzInput.checked });
+      });
+    }
+
+    if (gmReactNameInput) {
+      gmReactNameInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ reactOnNameMention: gmReactNameInput.checked });
+      });
+    }
+
+    if (gmReactChatInput) {
+      gmReactChatInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ reactOnGmChat: gmReactChatInput.checked });
+      });
+    }
+
+    if (gmAutoRepliesInput) {
+      gmAutoRepliesInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ autoRepliesEnabled: gmAutoRepliesInput.checked });
+      });
+    }
+
+    if (gmSoundInput) {
+      gmSoundInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ soundOnGm: gmSoundInput.checked });
+      });
+    }
+
+    if (captchaEnabledInput) {
+      captchaEnabledInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ captchaWatcherEnabled: captchaEnabledInput.checked });
+      });
+    }
+
+    if (captchaSoundInput) {
+      captchaSoundInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ soundOnCaptcha: captchaSoundInput.checked });
+      });
+    }
+
+    if (captchaTestSoundButton) {
+      captchaTestSoundButton.addEventListener("click", () => {
+        bot.playCaptchaAlarm?.(false);
+      });
+    }
+
+    if (captchaAutoSolveInput) {
+      captchaAutoSolveInput.addEventListener("change", () => {
+        bot.gm?.updateConfig({ captchaAutoSolveEnabled: captchaAutoSolveInput.checked });
+      });
+    }
+
+    if (gmCooldownInput) {
+      gmCooldownInput.addEventListener("change", () => {
+        const val = Math.max(1, Number(gmCooldownInput.value) || 10);
+        bot.gm?.updateConfig({ dontReactAgainMs: val * 60 * 1000 });
       });
     }
 
@@ -1386,14 +1857,44 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (runeCastsPerMinuteInput) {
+      runeCastsPerMinuteInput.value = String(bot.rune?.config?.castsPerMinute ?? 15);
+      runeCastsPerMinuteInput.addEventListener("change", () => {
+        const castsPerMinute = Math.max(1, Number(runeCastsPerMinuteInput.value) || 1);
+        runeCastsPerMinuteInput.value = String(castsPerMinute);
+        bot.rune.updateConfig({ castsPerMinute });
+      });
+    }
+
+    if (runeActiveMinutesInput) {
+      runeActiveMinutesInput.value = String(bot.rune?.config?.activeMinutes ?? 0);
+      runeActiveMinutesInput.addEventListener("change", () => {
+        const activeMinutes = Math.max(0, Number(runeActiveMinutesInput.value) || 0);
+        runeActiveMinutesInput.value = String(activeMinutes);
+        bot.rune.updateConfig({ activeMinutes });
+      });
+    }
+
+    if (runePauseMinutesInput) {
+      runePauseMinutesInput.value = String(bot.rune?.config?.pauseMinutes ?? 0);
+      runePauseMinutesInput.addEventListener("change", () => {
+        const pauseMinutes = Math.max(0, Number(runePauseMinutesInput.value) || 0);
+        runePauseMinutesInput.value = String(pauseMinutes);
+        bot.rune.updateConfig({ pauseMinutes });
+      });
+    }
+
     if (runeEnabledInput) {
       runeEnabledInput.checked = !!bot.rune?.status?.().running;
       runeEnabledInput.addEventListener("change", () => {
         const runeSpellWords = spellInput?.value?.trim() || bot.rune.config.runeSpellWords;
         const runeManaCost = Math.max(0, Number(manaInput?.value) || bot.rune.config.runeManaCost || 0);
+        const castsPerMinute = Math.max(1, Number(runeCastsPerMinuteInput?.value) || bot.rune.config.castsPerMinute || 15);
+        const activeMinutes = Math.max(0, Number(runeActiveMinutesInput?.value) || bot.rune.config.activeMinutes || 0);
+        const pauseMinutes = Math.max(0, Number(runePauseMinutesInput?.value) || bot.rune.config.pauseMinutes || 0);
 
         if (runeEnabledInput.checked) {
-          bot.rune.start({ runeSpellWords, runeManaCost });
+          bot.rune.start({ runeSpellWords, runeManaCost, castsPerMinute, activeMinutes, pauseMinutes });
         } else {
           bot.rune.stop();
         }
@@ -1628,7 +2129,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     }
 
     if (autoHealMinHpPercentInput) {
-      autoHealMinHpPercentInput.value = String(bot.heal?.config?.minHpPercent ?? 50);
+      autoHealMinHpPercentInput.value = String(bot.heal?.config?.minHpPercent ?? 80);
       autoHealMinHpPercentInput.addEventListener("change", () => {
         const minHpPercent = Math.min(100, Math.max(1, Number(autoHealMinHpPercentInput.value) || 1));
         autoHealMinHpPercentInput.value = String(minHpPercent);
@@ -1637,7 +2138,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     }
 
     if (autoHealHpHotkeyInput) {
-      autoHealHpHotkeyInput.value = String(bot.heal?.config?.hpHotbarSlot ?? 1);
+      autoHealHpHotkeyInput.value = String(bot.heal?.config?.hpHotbarSlot ?? 8);
       autoHealHpHotkeyInput.addEventListener("change", () => {
         const hpHotbarSlot = Math.min(12, Math.max(1, Number(autoHealHpHotkeyInput.value) || 1));
         autoHealHpHotkeyInput.value = String(hpHotbarSlot);
@@ -1646,7 +2147,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     }
 
     if (autoHealMinManaPercentInput) {
-      autoHealMinManaPercentInput.value = String(bot.heal?.config?.minManaPercent ?? 50);
+      autoHealMinManaPercentInput.value = String(bot.heal?.config?.minManaPercent ?? 30);
       autoHealMinManaPercentInput.addEventListener("change", () => {
         const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput.value) || 1));
         autoHealMinManaPercentInput.value = String(minManaPercent);
@@ -1655,7 +2156,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     }
 
     if (autoHealManaHotkeyInput) {
-      autoHealManaHotkeyInput.value = String(bot.heal?.config?.manaHotbarSlot ?? 1);
+      autoHealManaHotkeyInput.value = String(bot.heal?.config?.manaHotbarSlot ?? 4);
       autoHealManaHotkeyInput.addEventListener("change", () => {
         const manaHotbarSlot = Math.min(12, Math.max(1, Number(autoHealManaHotkeyInput.value) || 1));
         autoHealManaHotkeyInput.value = String(manaHotbarSlot);
@@ -1664,7 +2165,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     }
 
     if (autoHealHpCooldownInput) {
-      autoHealHpCooldownInput.value = String(bot.heal?.config?.hpHealCooldownMs ?? 2000);
+      autoHealHpCooldownInput.value = String(bot.heal?.config?.hpHealCooldownMs ?? 1800);
       autoHealHpCooldownInput.addEventListener("change", () => {
         const hpHealCooldownMs = Math.max(1000, Number(autoHealHpCooldownInput.value) || 1000);
         autoHealHpCooldownInput.value = String(hpHealCooldownMs);
@@ -1684,17 +2185,17 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     if (autoHealEnabledInput) {
       autoHealEnabledInput.checked = !!bot.heal?.status?.().running;
       autoHealEnabledInput.addEventListener("change", () => {
-        const minHpPercent = Math.min(100, Math.max(1, Number(autoHealMinHpPercentInput?.value) || bot.heal.config.minHpPercent || 50));
+        const minHpPercent = Math.min(100, Math.max(1, Number(autoHealMinHpPercentInput?.value) || bot.heal.config.minHpPercent || 80));
         const hpHotbarSlot = Math.min(
           12,
-          Math.max(1, Number(autoHealHpHotkeyInput?.value) || bot.heal.config.hpHotbarSlot || 1)
+          Math.max(1, Number(autoHealHpHotkeyInput?.value) || bot.heal.config.hpHotbarSlot || 8)
         );
-        const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput?.value) || bot.heal.config.minManaPercent || 50));
-        const hpHealCooldownMs = Math.max(1000, Number(autoHealHpCooldownInput?.value) || bot.heal.config.hpHealCooldownMs || 2000);
+        const minManaPercent = Math.min(100, Math.max(1, Number(autoHealMinManaPercentInput?.value) || bot.heal.config.minManaPercent || 30));
+        const hpHealCooldownMs = Math.max(1000, Number(autoHealHpCooldownInput?.value) || bot.heal.config.hpHealCooldownMs || 1800);
         const manaHealCooldownMs = Math.max(1000, Number(autoHealManaCooldownInput?.value) || bot.heal.config.manaHealCooldownMs || 1000);
         const manaHotbarSlot = Math.min(
           12,
-          Math.max(1, Number(autoHealManaHotkeyInput?.value) || bot.heal.config.manaHotbarSlot || 1)
+          Math.max(1, Number(autoHealManaHotkeyInput?.value) || bot.heal.config.manaHotbarSlot || 4)
         );
 
         if (autoHealEnabledInput.checked) {
@@ -1951,15 +2452,19 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
       });
     }
 
-    panel.querySelector("#minibia-bot-set-home")?.addEventListener("click", () => {
+    panel.querySelector("#mage-tuntun-set-home")?.addEventListener("click", () => {
       bot.pz.setHomePzCurrentSpot();
       refreshHomeLabel();
     });
 
     refreshHomeLabel();
+    refreshProfileLabel();
     refreshPanicStatus();
     refreshXrayStatus();
-    renderGameMasterNames();
+    renderGmStaffNames();
+    renderGmFirstReplies();
+    renderGmSecondReplies();
+    refreshGmStatus();
     renderTrustedNames();
     refreshRuneStatus();
     refreshAutoHealStatus();
@@ -1975,6 +2480,16 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     refreshCavePresetControls();
     refreshCaveClosestStatus();
     refreshCaveTransitionStatus();
+
+    const gmStatusTimerId = window.setInterval(refreshGmStatus, 1000);
+    bot.addCleanup(() => {
+      window.clearInterval(gmStatusTimerId);
+    });
+
+    const profileTimerId = window.setInterval(refreshProfileLabel, 1000);
+    bot.addCleanup(() => {
+      window.clearInterval(profileTimerId);
+    });
 
     const visibleCreaturesTimerId = window.setInterval(refreshVisibleCreatures, 1000);
     bot.addCleanup(() => {
@@ -2002,8 +2517,13 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     inject,
     destroy,
     refreshHomeLabel,
+    refreshProfileLabel,
     refreshPanicStatus,
     refreshXrayStatus,
+    refreshGmStatus,
+    renderGmStaffNames,
+    renderGmFirstReplies,
+    renderGmSecondReplies,
     refreshRuneStatus,
     refreshAutoHealStatus,
     refreshAutoInvisibleStatus,
@@ -2021,7 +2541,7 @@ window.__minibiaBotBundle.installPanel = function installPanel(bot) {
     getSavedPanelPosition,
     getSavedPanelCollapsed,
     setPanelCollapsed: (collapsed) => {
-      const panel = document.getElementById("minibia-bot-panel");
+      const panel = document.getElementById("mage-tuntun-panel");
       setPanelCollapsed(panel, collapsed);
     },
   };

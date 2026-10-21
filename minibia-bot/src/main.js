@@ -1,61 +1,11 @@
 (() => {
-  const bundle = window.__minibiaBotBundle || window.__minibiaBotReloadBundle || {};
-  const persistedEnabledModules = [
-    ["rune", "minibiaBot.rune.config"],
-    ["heal", "minibiaBot.heal.config"],
-    ["sio", "minibiaBot.sio.config"],
-    ["invisible", "minibiaBot.invisible.config"],
-    ["magicShield", "minibiaBot.magicShield.config"],
-    ["haste", "minibiaBot.haste.config"],
-    ["attack", "minibiaBot.attack.config"],
-    ["cave", "minibiaBot.cave.config"],
-    ["equipRing", "minibiaBot.equipRing.config"],
-    ["eat", "minibiaBot.eat.config"],
-    ["talk", "minibiaBot.talk.config"],
-  ];
-
-  function getPersistedEnabledSnapshot(bot) {
-    const snapshot = {};
-    const status = typeof bot?.status === "function" ? bot.status() : null;
-
-    persistedEnabledModules.forEach(([moduleName]) => {
-      const enabled = status?.[moduleName]?.config?.enabled;
-      if (typeof enabled === "boolean") {
-        snapshot[moduleName] = enabled;
-      }
-    });
-
-    return snapshot;
-  }
-
-  function restorePersistedEnabledSnapshot(snapshot) {
-    persistedEnabledModules.forEach(([moduleName, storageKey]) => {
-      if (typeof snapshot?.[moduleName] !== "boolean") {
-        return;
-      }
-
-      try {
-        const rawValue = window.localStorage.getItem(storageKey);
-        const config = rawValue ? JSON.parse(rawValue) : {};
-        config.enabled = snapshot[moduleName];
-        window.localStorage.setItem(storageKey, JSON.stringify(config));
-      } catch (error) {
-        console.error("[minibia-bot] failed to restore persisted enabled state", {
-          module: moduleName,
-          error,
-        });
-      }
-    });
-  }
+  const bundle = window.__mageTuntunBundle || window.__mageTuntunReloadBundle || {};
 
   function boot(currentBundle = bundle) {
-    const previousEnabledSnapshot = getPersistedEnabledSnapshot(window.minibiaBot);
-
-    if (window.minibiaBot?.destroy) {
-      window.minibiaBot.destroy();
+    const previousBot = window.mageTuntun || window.minibiaBot;
+    if (previousBot?.destroy) {
+      previousBot.destroy();
     }
-
-    restorePersistedEnabledSnapshot(previousEnabledSnapshot);
 
     const bot = currentBundle.createBot();
 
@@ -73,13 +23,14 @@
     currentBundle.installEquipRingModule(bot);
     currentBundle.installAutoEatModule(bot);
     currentBundle.installTalkModule(bot);
+    currentBundle.installGmModule(bot);
     currentBundle.installPanel(bot);
 
     bot.ui.inject();
 
     bot.start = (...args) => bot.rune.start(...args);
     bot.stop = (...args) => bot.rune.stop(...args);
-    bot.reload = () => window.minibiaBotReload?.();
+    bot.reload = () => window.mageTuntunReload?.();
     bot.status = () => ({
       version: bot.version,
       pz: {
@@ -98,46 +49,61 @@
       equipRing: bot.equipRing.status(),
       eat: bot.eat.status(),
       talk: bot.talk.status(),
+      gm: bot.gm.status(),
     });
 
+    window.mageTuntun = bot;
+    // Keep the pre-rename console API working for existing users and snippets.
     window.minibiaBot = bot;
     window.pzBot = bot.pz;
 
-    console.log("[minibia-bot] ready", {
+    // The game can finish loading the character after the bundle is injected.
+    // Reboot once then, so every module reads that character's saved profile.
+    if (!bot.getActiveProfileName?.()) {
+      const profileWaitTimerId = window.setInterval(() => {
+        if (!bot.getActiveProfileName?.()) return;
+        window.clearInterval(profileWaitTimerId);
+        window.mageTuntunReload?.();
+      }, 500);
+      bot.addCleanup(() => window.clearInterval(profileWaitTimerId));
+    }
+
+    console.log("[mage-tuntun] ready", {
       version: bot.version,
-      modules: ["pz", "xray", "panic", "rune", "heal", "sio", "invisible", "magicShield", "haste", "attack", "cave", "equipRing", "eat", "talk", "ui"],
+      modules: ["pz", "xray", "panic", "rune", "heal", "sio", "invisible", "magicShield", "haste", "attack", "cave", "equipRing", "eat", "talk", "gm", "ui"],
     });
-    console.log("minibiaBot.reload()");
-    console.log("minibiaBot.xray.status()");
-    console.log("minibiaBot.panic.status()");
-    console.log("minibiaBot.pz.goToNearestPz()");
-    console.log("minibiaBot.pz.setHomePzCurrentSpot()");
-    console.log("minibiaBot.pz.goToHomePz()");
-    console.log("minibiaBot.rune.start()");
-    console.log("minibiaBot.rune.stop()");
-    console.log("minibiaBot.heal.start()");
-    console.log("minibiaBot.heal.stop()");
-    console.log("minibiaBot.invisible.start()");
-    console.log("minibiaBot.invisible.stop()");
-    console.log("minibiaBot.magicShield.start()");
-    console.log("minibiaBot.magicShield.stop()");
-    console.log("minibiaBot.attack.start()");
-    console.log("minibiaBot.attack.stop()");
-    console.log("minibiaBot.cave.addWaypointCurrentSpot()");
-    console.log("minibiaBot.cave.start()");
-    console.log("minibiaBot.cave.stop()");
-    console.log("minibiaBot.equipRing.start()");
-    console.log("minibiaBot.equipRing.stop()");
-    console.log("minibiaBot.eat.start()");
-    console.log("minibiaBot.eat.stop()");
-    console.log("minibiaBot.talk.updateConfig({ apiKey: \"...\" })");
-    console.log("minibiaBot.talk.start()");
-    console.log("minibiaBot.talk.stop()");
+    console.log("mageTuntun.reload()");
+    console.log("mageTuntun.xray.status()");
+    console.log("mageTuntun.panic.status()");
+    console.log("mageTuntun.pz.goToNearestPz()");
+    console.log("mageTuntun.pz.setHomePzCurrentSpot()");
+    console.log("mageTuntun.pz.goToHomePz()");
+    console.log("mageTuntun.rune.start()");
+    console.log("mageTuntun.rune.stop()");
+    console.log("mageTuntun.heal.start()");
+    console.log("mageTuntun.heal.stop()");
+    console.log("mageTuntun.invisible.start()");
+    console.log("mageTuntun.invisible.stop()");
+    console.log("mageTuntun.magicShield.start()");
+    console.log("mageTuntun.magicShield.stop()");
+    console.log("mageTuntun.attack.start()");
+    console.log("mageTuntun.attack.stop()");
+    console.log("mageTuntun.cave.addWaypointCurrentSpot()");
+    console.log("mageTuntun.cave.start()");
+    console.log("mageTuntun.cave.stop()");
+    console.log("mageTuntun.equipRing.start()");
+    console.log("mageTuntun.equipRing.stop()");
+    console.log("mageTuntun.eat.start()");
+    console.log("mageTuntun.eat.stop()");
+    console.log("mageTuntun.talk.updateConfig({ apiKey: \"...\" })");
+    console.log("mageTuntun.talk.start()");
+    console.log("mageTuntun.talk.stop()");
     return bot;
   }
 
-  window.__minibiaBotReloadBundle = bundle;
-  window.minibiaBotReload = () => boot(window.__minibiaBotReloadBundle || bundle);
-  delete window.__minibiaBotBundle;
+  window.__mageTuntunReloadBundle = bundle;
+  window.mageTuntunReload = () => boot(window.__mageTuntunReloadBundle || bundle);
+  window.minibiaBotReload = window.mageTuntunReload;
+  delete window.__mageTuntunBundle;
   boot(bundle);
 })();

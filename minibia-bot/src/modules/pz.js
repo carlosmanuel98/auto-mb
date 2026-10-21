@@ -1,7 +1,7 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installPzModule = function installPzModule(bot) {
-  const homeStorageKey = "minibiaBot.pz.home";
+window.__mageTuntunBundle.installPzModule = function installPzModule(bot) {
+  const homeStorageKey = "mageTuntun.pz.home";
 
   function getLoadedTiles() {
     const chunks = window.gameClient?.world?.chunks || [];
@@ -172,6 +172,14 @@ window.__minibiaBotBundle.installPzModule = function installPzModule(bot) {
     return rows;
   }
 
+  function isPositionInPz(pos) {
+    if (!pos) return false;
+    const tile = getLoadedTiles().find(
+      (t) => t.__position?.x === pos.x && t.__position?.y === pos.y && t.__position?.z === pos.z
+    );
+    return hasPzFlag(tile);
+  }
+
   bot.pz = {
     getLoadedTiles,
     getPzCandidates,
@@ -184,6 +192,7 @@ window.__minibiaBotBundle.installPzModule = function installPzModule(bot) {
     getNearestPzTo,
     goToHomePz,
     printPzCandidates,
+    isPositionInPz,
   };
 
   bot.goToNearestPz = goToNearestPz;

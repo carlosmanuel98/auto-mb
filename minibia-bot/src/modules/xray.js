@@ -1,9 +1,9 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installXrayModule = function installXrayModule(bot) {
-  const configStorageKey = "minibiaBot.xray.config";
-  const overlayRootId = "minibia-bot-xray-overlay";
-  const overlayStyleId = "minibia-bot-xray-overlay-style";
+window.__mageTuntunBundle.installXrayModule = function installXrayModule(bot) {
+  const configStorageKey = "mageTuntun.xray.config";
+  const overlayRootId = "mage-tuntun-xray-overlay";
+  const overlayStyleId = "mage-tuntun-xray-overlay-style";
   const overlayState = {
     running: false,
     timerId: null,

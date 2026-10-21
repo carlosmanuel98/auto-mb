@@ -1,7 +1,7 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installAutoHasteModule = function installAutoHasteModule(bot) {
-  const configStorageKey = "minibiaBot.haste.config";
+window.__mageTuntunBundle.installAutoHasteModule = function installAutoHasteModule(bot) {
+  const configStorageKey = "mageTuntun.haste.config";
   const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {
     running: false,

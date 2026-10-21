@@ -1,7 +1,7 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installAutoAttackModule = function installAutoAttackModule(bot) {
-  const configStorageKey = "minibiaBot.attack.config";
+window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackModule(bot) {
+  const configStorageKey = "mageTuntun.attack.config";
   const state = {
     running: false,
     timerId: null,

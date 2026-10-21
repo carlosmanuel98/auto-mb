@@ -1,4 +1,4 @@
-# Minibia Bot
+# Mage Tuntun
 
 ## Load From GitHub In Chrome Or Edge
 
@@ -54,19 +54,19 @@ That serves this folder on `http://127.0.0.1:8000/` with `Access-Control-Allow-O
 **Main API**
 
 ```js
-minibiaBot.status()
+mageTuntun.status()
 
-minibiaBot.pz.setHomePzCurrentSpot()
-minibiaBot.pz.goToHomePz()
-minibiaBot.pz.goToNearestPz()
+mageTuntun.pz.setHomePzCurrentSpot()
+mageTuntun.pz.goToHomePz()
+mageTuntun.pz.goToNearestPz()
 
-minibiaBot.rune.start()
-minibiaBot.rune.stop()
-minibiaBot.rune.status()
+mageTuntun.rune.start()
+mageTuntun.rune.stop()
+mageTuntun.rune.status()
 
-minibiaBot.heal.start()
-minibiaBot.heal.stop()
-minibiaBot.heal.status()
+mageTuntun.heal.start()
+mageTuntun.heal.stop()
+mageTuntun.heal.status()
 
 ```
 

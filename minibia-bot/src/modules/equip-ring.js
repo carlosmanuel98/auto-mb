@@ -1,7 +1,7 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installEquipRingModule = function installEquipRingModule(bot) {
-  const configStorageKey = "minibiaBot.equipRing.config";
+window.__mageTuntunBundle.installEquipRingModule = function installEquipRingModule(bot) {
+  const configStorageKey = "mageTuntun.equipRing.config";
   const RING_SLOT = 8;
   const state = {
     running: false,

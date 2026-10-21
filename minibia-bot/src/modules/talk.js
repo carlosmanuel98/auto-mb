@@ -1,16 +1,24 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
-  const configStorageKey = "minibiaBot.talk.config";
+window.__mageTuntunBundle.installTalkModule = function installTalkModule(bot) {
+  const configStorageKey = "mageTuntun.talk.config";
   const legacyDefaultModels = ["gemini-3-pro-preview", "gemini-2.0-flash"];
   const defaultModel = "gemini-2.5-flash-lite";
   const defaultSystemPrompt =
-    "You are a normal Tibia MMORPG player chatting in Minibia in live in-game chat. Every reply must sound like Tibia player chat: casual, brief, informal, fully lowercase, and natural for a real player typing quickly. Use plain text only. Keep it under 90 characters and under 12 words. Prefer short Tibia-style phrasing, light slang, abbreviations, and simple punctuation when natural. Avoid polished grammar, title case, or assistant-like wording. Write like someone typing mid-hunt or while afk for a sec. Never say you are a bot or AI.";
+    "You are a normal Tibia MMORPG player chatting in Minibia in live in-game chat. Every reply must be written in Spanish and must sound like Tibia player chat: casual, brief, informal, fully lowercase, and natural for a real player typing quickly. Use plain text only. Keep it under 90 characters and under 12 words. Prefer short phrasing, light slang, abbreviations, and simple punctuation when natural. Avoid polished grammar, title case, or assistant-like wording. Write like someone typing mid-hunt or while afk for a sec. Never say you are a bot or AI.";
   const defaultGreetingPrompt =
-    "Respond to greetings like a Tibia MMORPG player in chat. Be short, casual, friendly, and in-character for fast Tibia-style game chat. Use lowercase. One sentence only. Plain text only.";
+    "Respond to greetings like a Tibia MMORPG player in chat, always in Spanish. Be short, casual, friendly, and in-character for fast Tibia-style game chat. Use lowercase. One sentence only. Plain text only.";
   const defaultQuestionPrompt =
-    "Respond to questions like a Tibia MMORPG player in chat, but stay vague and noncommittal. Keep it brief, casual, and a little evasive. Use lowercase and do not explain much. One short sentence only. Plain text only. If asked whether you are a bot, reply with no.";
+    "Respond to questions like a Tibia MMORPG player in chat, always in Spanish, but stay vague and noncommittal. Keep it brief, casual, and a little evasive. Use lowercase and do not explain much. One short sentence only. Plain text only. If asked whether you are a bot, reply with no.";
   const defaultStatementPrompt =
+    "Respond to statements like a Tibia MMORPG player in chat, always in Spanish. Keep it short, casual, reactive, and natural for live Tibia-style game chat. Use lowercase. One sentence only. Plain text only.";
+  const legacyDefaultSystemPrompt =
+    "You are a normal Tibia MMORPG player chatting in Minibia in live in-game chat. Every reply must sound like Tibia player chat: casual, brief, informal, fully lowercase, and natural for a real player typing quickly. Use plain text only. Keep it under 90 characters and under 12 words. Prefer short Tibia-style phrasing, light slang, abbreviations, and simple punctuation when natural. Avoid polished grammar, title case, or assistant-like wording. Write like someone typing mid-hunt or while afk for a sec. Never say you are a bot or AI.";
+  const legacyDefaultGreetingPrompt =
+    "Respond to greetings like a Tibia MMORPG player in chat. Be short, casual, friendly, and in-character for fast Tibia-style game chat. Use lowercase. One sentence only. Plain text only.";
+  const legacyDefaultQuestionPrompt =
+    "Respond to questions like a Tibia MMORPG player in chat, but stay vague and noncommittal. Keep it brief, casual, and a little evasive. Use lowercase and do not explain much. One short sentence only. Plain text only. If asked whether you are a bot, reply with no.";
+  const legacyDefaultStatementPrompt =
     "Respond to statements like a Tibia MMORPG player in chat. Keep it short, casual, reactive, and natural for live Tibia-style game chat. Use lowercase. One sentence only. Plain text only.";
   const minPollMs = 1000;
   const maxMessageAgeMs = 2 * 60 * 1000;
@@ -22,10 +30,15 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
     seenKeys: [],
     seenSignatures: [],
   };
-  const greetingReplies = ["yo", "sup", "hey", "hiya", "yo lol"];
-  const agreeReplies = ["true", "fr", "based", "ya", "real"];
-  const vagueQuestionReplies = ["maybe", "not sure", "hard to say", "could be"];
-  const denyBotReplies = ["no", "nope", "nah"];
+  const playerReplies = ["hola", "claro", "como va?", "todo bien?", "buenassss", "dime", "si?", "aca toy", "q onda"];
+  const greetingReplies = ["hola", "buenassss", "como va?", "q onda", "buenas", "wena", "ey"];
+  const presenceOrBotReplies = ["hola", "claro", "como va?", "todo bien?", "buenassss", "dime", "si?", "aca toy", "here"];
+  const agreeReplies = ["claro", "see", "de una", "mal", "si", "obvio", "jajaja", "xd"];
+  const vagueQuestionReplies = ["todo bien?", "como va?", "claro", "ni idea", "ns", "capaz", "despues veo"];
+
+  function getRandomBetween(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
 
   const config = Object.assign(
     {
@@ -65,6 +78,20 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
     config.greetingPrompt = String(config.greetingPrompt || defaultGreetingPrompt).trim() || defaultGreetingPrompt;
     config.questionPrompt = String(config.questionPrompt || defaultQuestionPrompt).trim() || defaultQuestionPrompt;
     config.statementPrompt = String(config.statementPrompt || defaultStatementPrompt).trim() || defaultStatementPrompt;
+
+    // Migrate saved configs that still hold the old English default prompts.
+    if (config.systemPrompt === legacyDefaultSystemPrompt) {
+      config.systemPrompt = defaultSystemPrompt;
+    }
+    if (config.greetingPrompt === legacyDefaultGreetingPrompt) {
+      config.greetingPrompt = defaultGreetingPrompt;
+    }
+    if (config.questionPrompt === legacyDefaultQuestionPrompt) {
+      config.questionPrompt = defaultQuestionPrompt;
+    }
+    if (config.statementPrompt === legacyDefaultStatementPrompt) {
+      config.statementPrompt = defaultStatementPrompt;
+    }
   }
 
   function trimSeen() {
@@ -442,12 +469,7 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
       .toLowerCase()
       .replace(/[“”]/g, '"')
       .replace(/[‘’]/g, "'")
-      .replace(/\bi am\b/g, "im")
-      .replace(/\byou are\b/g, "youre")
-      .replace(/\bdo not\b/g, "dont")
-      .replace(/\bcannot\b/g, "cant")
-      .replace(/\bgoing to\b/g, "gonna")
-      .replace(/\bwant to\b/g, "wanna")
+      .replace(/^[¿¡]+/g, "")
       .replace(/\s+([,.!?])/g, "$1")
       .replace(/([!?.,]){2,}/g, "$1")
       .trim();
@@ -457,7 +479,7 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
       return "";
     }
 
-    if (/\b(bot|ai|assistant|language model|automation|script)\b/i.test(styled)) {
+    if (/\b(soy (un |una )?(bot|ia|robot|asistente)|as an ai|language model|modelo de lenguaje|asistente virtual)\b/i.test(styled)) {
       return "";
     }
 
@@ -479,41 +501,41 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
   }
 
   function isGreeting(text) {
-    return /^(hi|hey|yo|sup|howdy|hello|hiya)\b/i.test(String(text || "").trim());
+    return /^(hi|hey|yo|sup|howdy|hello|hiya|h[oó]la|s[aá]ludos|buenos d[ií]as|buenas tardes|buenas noches|qu[eé] tal|qu[eé] onda|ey|buenas|wena)\b/i.test(String(text || "").trim());
   }
 
-  function isBotQuestion(text) {
-    return /\b(are you|u)\b.*\bbot\b|\bbot\b.*\?|\bare you a bot\b/i.test(String(text || ""));
+  function isBotOrPresenceQuestion(text) {
+    return /\b(are you|u|r u|are u)\b.*\b(there|here|bot|afk|on)\b|\b(there|here|bot)\b.*\?|\b(sos|eres|es|tas|estas)\b.*\b(bot|ia|macro|robot|ahi|on|aca)\b|\b(estas|tas)\s+(ahi|on|aca)\b|\b(here|bot)\?+/i.test(String(text || ""));
   }
 
   function isSimpleReaction(text) {
-    return /^(based|true|real|lol|lmao|xd|nice|ok|kk|k)\b[!.?]*$/i.test(String(text || "").trim());
+    return /^(based|true|real|lol|lmao|xd|nice|ok|kk|k|jaja|jajaja|s[ií]|vale|claro|de una|bien|mal|see|sep)\b[!.?]*$/i.test(String(text || "").trim());
   }
 
   function pickFallbackReply(targetMessage, messageType) {
     const messageText = String(targetMessage?.body || "").trim();
 
-    if (isBotQuestion(messageText)) {
-      return pickUnusedReply(denyBotReplies, 30000, "no");
+    if (messageType === "bot" || isBotOrPresenceQuestion(messageText)) {
+      return pickUnusedReply(presenceOrBotReplies, 25000, "hola");
     }
 
     if (messageType === "greeting" || isGreeting(messageText)) {
-      return pickUnusedReply(greetingReplies, 15000, "yo");
+      return pickUnusedReply(greetingReplies, 15000, "hola");
     }
 
-    if (isSimpleReaction(messageText)) {
-      return pickUnusedReply(agreeReplies, 15000, "true");
+    if (messageType === "statement" && isSimpleReaction(messageText)) {
+      return pickUnusedReply(agreeReplies, 15000, "claro");
     }
 
     if (messageType === "question" || /\?$/.test(messageText)) {
-      return pickUnusedReply(vagueQuestionReplies, 20000, "maybe");
+      return pickUnusedReply(vagueQuestionReplies, 20000, "como va?");
     }
 
-    return pickUnusedReply(["lol", "maybe", "ya", "true", "kinda"], 30000, "lol");
+    return pickUnusedReply(playerReplies, 25000, "todo bien?");
   }
 
   async function maybeRespond() {
-    if (!state.running || state.pending || !config.enabled || !config.apiKey) {
+    if (!state.running || state.pending || !config.enabled) {
       return false;
     }
 
@@ -540,11 +562,29 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
         return false;
       }
 
-      const messageType = await classifyMessageType(pending.targetMessage, contextMessages);
-      const rawReply = isBotQuestion(pending.targetMessage.body)
-        ? "no"
-        : await generateText(buildReplyPrompt(pending.targetMessage, contextMessages, messageType));
-      const reply = sanitizeReply(rawReply) || pickFallbackReply(pending.targetMessage, messageType);
+      let reply = "";
+      let messageType = "statement";
+      const msgBody = String(pending.targetMessage?.body || "");
+
+      if (isBotOrPresenceQuestion(msgBody)) {
+        messageType = "bot";
+        reply = pickFallbackReply(pending.targetMessage, "bot");
+      } else if (config.apiKey) {
+        try {
+          messageType = await classifyMessageType(pending.targetMessage, contextMessages);
+          const rawReply = await generateText(buildReplyPrompt(pending.targetMessage, contextMessages, messageType));
+          reply = sanitizeReply(rawReply);
+        } catch (error) {
+          bot.log("talk generation failed, using fallback", error?.message || error);
+        }
+      }
+
+      if (!reply) {
+        if (isGreeting(msgBody)) messageType = "greeting";
+        else if (isSimpleReaction(msgBody)) messageType = "statement";
+        else if (/\?/.test(msgBody)) messageType = "question";
+        reply = sanitizeReply(pickFallbackReply(pending.targetMessage, messageType));
+      }
 
       rememberSeenMessages(pending.pendingMessages);
 
@@ -553,7 +593,21 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
           sender: pending.targetMessage.sender,
           message: pending.targetMessage.body,
           messageType,
-          rawReply,
+        });
+        return false;
+      }
+
+      // Natural human typing delay (3s to 5.5s) so the character doesn't reply instantly
+      const typingDelay = getRandomBetween(3000, 5500);
+      await new Promise((resolve) => window.setTimeout(resolve, typingDelay));
+
+      // The API response or typing delay takes a moment. Do not answer someone who has
+      // left the visible area or become invisible while waiting.
+      if (!isSenderVisiblePlayer(pending.targetMessage)) {
+        bot.log("talk skipped reply", {
+          sender: pending.targetMessage.sender,
+          message: pending.targetMessage.body,
+          reason: "sender-no-longer-visible",
         });
         return false;
       }
@@ -600,11 +654,6 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
     sanitizeConfig();
     persistConfig();
 
-    if (!config.apiKey) {
-      bot.log("talk module requires a Gemini API key");
-      return false;
-    }
-
     if (state.running) {
       return false;
     }
@@ -612,7 +661,7 @@ window.__minibiaBotBundle.installTalkModule = function installTalkModule(bot) {
     state.running = true;
     seedSeenMessages();
     bot.log("talk module started", {
-      model: config.model,
+      mode: config.apiKey ? `gemini (${config.model})` : "player-replies (sin api key)",
       channel: "Default",
     });
     scheduleNextTick();

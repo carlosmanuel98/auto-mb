@@ -1,7 +1,7 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installAutoInvisibleModule = function installAutoInvisibleModule(bot) {
-  const configStorageKey = "minibiaBot.invisible.config";
+window.__mageTuntunBundle.installAutoInvisibleModule = function installAutoInvisibleModule(bot) {
+  const configStorageKey = "mageTuntun.invisible.config";
   const INVISIBLE_CONDITION_ID = 4;
   const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {

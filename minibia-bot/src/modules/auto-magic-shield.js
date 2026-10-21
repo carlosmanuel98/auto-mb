@@ -1,7 +1,7 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installAutoMagicShieldModule = function installAutoMagicShieldModule(bot) {
-  const configStorageKey = "minibiaBot.magicShield.config";
+window.__mageTuntunBundle.installAutoMagicShieldModule = function installAutoMagicShieldModule(bot) {
+  const configStorageKey = "mageTuntun.magicShield.config";
   const MAGIC_SHIELD_FALLBACK_DURATION_MS = 180000;
   const MIN_SPELL_COOLDOWN_MS = 1000;
   const state = {

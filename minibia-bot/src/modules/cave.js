@@ -1,13 +1,13 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
-  const configStorageKey = "minibiaBot.cave.config";
-  const routeStorageKey = "minibiaBot.cave.route";
-  const transitionStorageKey = "minibiaBot.cave.transitions";
-  const presetStorageKey = "minibiaBot.cave.presets";
+window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
+  const configStorageKey = "mageTuntun.cave.config";
+  const routeStorageKey = "mageTuntun.cave.route";
+  const transitionStorageKey = "mageTuntun.cave.transitions";
+  const presetStorageKey = "mageTuntun.cave.presets";
   const defaultPresetName = "Default";
-  const minimapOverlayRootId = "minibia-bot-cave-minimap-overlay";
-  const minimapOverlayStyleId = "minibia-bot-cave-minimap-overlay-style";
+  const minimapOverlayRootId = "mage-tuntun-cave-minimap-overlay";
+  const minimapOverlayStyleId = "mage-tuntun-cave-minimap-overlay-style";
   const ladderItemIds = new Set([1948, 1968]);
   const ropeNamePattern = /\brope\b/i;
   const shovelNamePattern = /\bshovel\b/i;
@@ -28,6 +28,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     lastProgressAt: 0,
     lastStairsUseAt: 0,
     lastObservedPosition: null,
+    lastCavePosition: null,
     pendingTransitionSource: null,
     pausedForCombat: false,
   };
@@ -40,6 +41,8 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
       tickMs: 500,
       repathMs: 1500,
       waypointTolerance: 0,
+      stopOnUnexpectedRelocation: true,
+      unexpectedRelocationDistance: 10,
       enabled: false,
       unexpectedMonsterAlertEnabled: true,
       activePresetName: defaultPresetName,
@@ -1099,6 +1102,50 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     return null;
   }
 
+  function getUnexpectedRelocationReason(previous, current) {
+    if (!config.stopOnUnexpectedRelocation || !previous || !current) {
+      return null;
+    }
+
+    const expectedFloorChange =
+      !!state.pendingTransitionSource && Date.now() - state.lastStairsUseAt <= 4000;
+    const distance = Math.abs(previous.x - current.x) + Math.abs(previous.y - current.y);
+    if (previous.z !== current.z && !expectedFloorChange) {
+      return "Unexpected floor change";
+    }
+    if (distance > Math.max(3, Number(config.unexpectedRelocationDistance) || 10) && !expectedFloorChange) {
+      return "Unexpected relocation";
+    }
+    return null;
+  }
+
+  function stopForUnsafeState(position) {
+    const playerState = bot.getPlayerState?.();
+    const health = Number(playerState?.health);
+    const maxHealth = Number(playerState?.maxHealth);
+    if (Number.isFinite(health) && Number.isFinite(maxHealth) && maxHealth > 0 && health <= 0) {
+      stop({ reason: "Character died" });
+      bot.log("cave stopped: character death detected");
+      bot.ui?.refreshCaveStatus?.();
+      return true;
+    }
+
+    const reason = getUnexpectedRelocationReason(state.lastCavePosition, position);
+    if (reason) {
+      stop({ reason });
+      bot.log("cave stopped: unsafe relocation detected", {
+        reason,
+        from: state.lastCavePosition,
+        to: position,
+      });
+      bot.ui?.refreshCaveStatus?.();
+      return true;
+    }
+
+    state.lastCavePosition = position;
+    return false;
+  }
+
   function observePosition() {
     const current = normalizePosition(bot.getPlayerPosition());
     if (!current) {
@@ -1106,6 +1153,14 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     }
 
     const previous = state.lastObservedPosition;
+    const relocationReason = state.running && getUnexpectedRelocationReason(previous, current);
+    if (relocationReason) {
+      state.lastObservedPosition = current;
+      stop({ reason: relocationReason });
+      bot.log("cave stopped by position observer", { reason: relocationReason, from: previous, to: current });
+      bot.ui?.refreshCaveStatus?.();
+      return;
+    }
     if (previous && !isSameTile(previous, current) && previous.z !== current.z) {
       const source = resolveObservedTransitionSource(previous);
       if (source) {
@@ -1428,18 +1483,21 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     if (!state.running) return;
 
     try {
-      observePosition();
-
       if (!route.length) {
         stop();
         return;
       }
 
+      const position = normalizePosition(bot.getPlayerPosition());
+      if (stopForUnsafeState(position)) {
+        return;
+      }
+      observePosition();
+
       if (stopForUnexpectedMonsters(getUnexpectedVisibleMonsters())) {
         return;
       }
 
-      const position = normalizePosition(bot.getPlayerPosition());
       const positionKey = getPositionKey(position);
       const now = Date.now();
       const attackStatus = bot.attack?.status?.() || null;
@@ -1551,6 +1609,8 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     }
     state.lastPathAt = 0;
     state.lastPositionKey = getPositionKey(position);
+    state.lastObservedPosition = position;
+    state.lastCavePosition = position;
     state.lastProgressAt = Date.now();
     state.pausedForCombat = false;
     bot.log("cave bot started", {
@@ -1648,6 +1708,32 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     return removed;
   }
 
+  function removeWaypoint(index) {
+    const normalizedIndex = Math.trunc(Number(index));
+    if (!Number.isInteger(normalizedIndex) || normalizedIndex < 0 || normalizedIndex >= route.length) {
+      return null;
+    }
+
+    const [removed] = route.splice(normalizedIndex, 1);
+    if (normalizedIndex < state.currentIndex) {
+      state.currentIndex -= 1;
+    }
+    if (state.currentIndex >= route.length) {
+      state.currentIndex = Math.max(0, route.length - 1);
+    }
+    if (route.length <= 1) {
+      state.direction = 1;
+    }
+    persistRoute();
+    bot.log("cave waypoint removed", { ...removed, index: normalizedIndex + 1, total: route.length });
+
+    if (!route.length && state.running) {
+      stop();
+    }
+
+    return cloneValue(removed);
+  }
+
   function setCurrentIndex(index) {
     if (!route.length) {
       state.currentIndex = 0;
@@ -1726,6 +1812,7 @@ window.__minibiaBotBundle.installCaveModule = function installCaveModule(bot) {
     clearWaypoints,
     clearTransitions,
     removeLastWaypoint,
+    removeWaypoint,
     setCurrentIndex,
     goToWaypoint,
     goToPosition,

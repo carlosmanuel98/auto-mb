@@ -1,12 +1,13 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(bot) {
-  const configStorageKey = "minibiaBot.eat.config";
+window.__mageTuntunBundle.installAutoEatModule = function installAutoEatModule(bot) {
+  const configStorageKey = "mageTuntun.eat.config";
   const MIN_EAT_COOLDOWN_MS = 1000;
   const state = {
     running: false,
     timerId: null,
     lastFoodAt: 0,
+    currentJitterMs: 0,
   };
 
   const config = Object.assign(
@@ -41,20 +42,28 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
     return normalized;
   }
 
+  function getRandomJitterMs() {
+    return Math.floor(Math.random() * 5000) + 2000;
+  }
+
   function readFoodTimer() {
-    const foodText =
-      document.querySelector('#skill-window div[skill="food"] .skill')?.textContent?.trim() ||
-      null;
+    try {
+      const foodText =
+        document.querySelector('#skill-window div[skill="food"] .skill')?.textContent?.trim() ||
+        null;
 
-    if (!foodText) return null;
+      if (!foodText) return null;
 
-    const match = foodText.match(/^(\d{1,2}):(\d{2})$/);
-    return match
-      ? {
-          text: foodText,
-          seconds: Number(match[1]) * 60 + Number(match[2]),
-        }
-      : { text: foodText, seconds: null };
+      const match = foodText.match(/^(\d{1,2}):(\d{2})$/);
+      return match
+        ? {
+            text: foodText,
+            seconds: Number(match[1]) * 60 + Number(match[2]),
+          }
+        : { text: foodText, seconds: null };
+    } catch (error) {
+      return null;
+    }
   }
 
   function normalizeEatMode(mode) {
@@ -97,7 +106,8 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
       return false;
     }
 
-    if (Date.now() - state.lastFoodAt < config.eatCooldownMs) {
+    const targetCooldown = config.eatCooldownMs + (state.currentJitterMs || 0);
+    if (Date.now() - state.lastFoodAt < targetCooldown) {
       return false;
     }
 
@@ -111,7 +121,8 @@ window.__minibiaBotBundle.installAutoEatModule = function installAutoEatModule(b
 
     if (clicked) {
       state.lastFoodAt = Date.now();
-      bot.log("used eat hotkey", { slot, eatMode: config.eatMode });
+      state.currentJitterMs = getRandomJitterMs();
+      bot.log("used eat hotkey", { slot, eatMode: config.eatMode, nextJitterMs: state.currentJitterMs });
     }
 
     return clicked;

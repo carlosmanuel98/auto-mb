@@ -1,11 +1,13 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
-  const configStorageKey = "minibiaBot.rune.config";
+window.__mageTuntunBundle.installRuneModule = function installRuneModule(bot) {
+  const configStorageKey = "mageTuntun.rune.config";
   const state = {
     running: false,
     timerId: null,
     lastRuneAt: 0,
+    nextRuneAt: 0,
+    cycleStartedAt: 0,
   };
   let resumeListenersAttached = false;
 
@@ -17,11 +19,19 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
       runeSpellWords: "adori vita vis",
       runeManaCost: 600,
       runeCooldownMs: 3500,
+      castsPerMinute: 15,
+      activeMinutes: 0,
+      pauseMinutes: 0,
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 250;
+  delete config.timingVariationPercent;
+  config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 3500);
+  config.castsPerMinute = Math.max(1, Number(config.castsPerMinute) || 15);
+  config.activeMinutes = Math.max(0, Number(config.activeMinutes) || 0);
+  config.pauseMinutes = Math.max(0, Number(config.pauseMinutes) || 0);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -56,8 +66,26 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
     return { hp, mana, food };
   }
 
+  function getCycleStatus(now = Date.now()) {
+    const activeMs = Math.round(config.activeMinutes * 60 * 1000);
+    const pauseMs = Math.round(config.pauseMinutes * 60 * 1000);
+    if (!activeMs || !pauseMs) {
+      return { enabled: false, active: true, remainingMs: 0 };
+    }
+
+    const startedAt = state.cycleStartedAt || now;
+    const elapsedInCycle = Math.max(0, now - startedAt) % (activeMs + pauseMs);
+    const active = elapsedInCycle < activeMs;
+    return {
+      enabled: true,
+      active,
+      remainingMs: active ? activeMs - elapsedInCycle : activeMs + pauseMs - elapsedInCycle,
+    };
+  }
+
   function getGateStatus(now = Date.now()) {
     const { hp, mana, food } = readStats();
+    const cycle = getCycleStatus(now);
     if (!hp || !mana) {
       return {
         hasStats: false,
@@ -66,6 +94,7 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
         enoughFood: false,
         cooldownReady: false,
         cooldownRemainingMs: config.runeCooldownMs,
+        cycle,
         canMakeRune: false,
       };
     }
@@ -74,8 +103,7 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
     const enoughHp = hpPercent >= config.minHpPercent;
     const enoughMana = mana.current >= config.runeManaCost;
     const enoughFood = food?.seconds == null || food.seconds >= config.minFoodSeconds;
-    const cooldownElapsedMs = now - state.lastRuneAt;
-    const cooldownRemainingMs = Math.max(0, config.runeCooldownMs - cooldownElapsedMs);
+    const cooldownRemainingMs = Math.max(0, state.nextRuneAt - now);
     const cooldownReady = cooldownRemainingMs === 0;
 
     return {
@@ -85,7 +113,8 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
       enoughFood,
       cooldownReady,
       cooldownRemainingMs,
-      canMakeRune: enoughHp && enoughMana && enoughFood && cooldownReady,
+      cycle,
+      canMakeRune: enoughHp && enoughMana && enoughFood && cooldownReady && cycle.active,
     };
   }
 
@@ -100,7 +129,12 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
 
     const sent = bot.sendChat(config.runeSpellWords);
     if (sent) {
-      state.lastRuneAt = Date.now();
+      const now = Date.now();
+      const baseIntervalMs = 60000 / config.castsPerMinute;
+      // Never schedule faster than the spell's known server cooldown.
+      const intervalMs = Math.max(config.runeCooldownMs, Math.round(baseIntervalMs));
+      state.lastRuneAt = now;
+      state.nextRuneAt = now + intervalMs;
     }
 
     return sent;
@@ -170,6 +204,10 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
   function start(overrides = {}) {
     Object.assign(config, overrides, { enabled: true });
     config.tickMs = 250;
+    config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 3500);
+    config.castsPerMinute = Math.max(1, Number(config.castsPerMinute) || 15);
+    config.activeMinutes = Math.max(0, Number(config.activeMinutes) || 0);
+    config.pauseMinutes = Math.max(0, Number(config.pauseMinutes) || 0);
     persistConfig();
 
     if (state.running) {
@@ -178,6 +216,7 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
     }
 
     state.running = true;
+    state.cycleStartedAt = Date.now();
     attachResumeListeners();
     bot.log("rune maker started", { ...config });
     tick();
@@ -210,12 +249,18 @@ window.__minibiaBotBundle.installRuneModule = function installRuneModule(bot) {
         stats: readStats(),
         gates: getGateStatus(),
         lastRuneAt: state.lastRuneAt,
+        nextRuneAt: state.nextRuneAt,
+        cycle: getCycleStatus(),
       };
   }
 
   function updateConfig(nextConfig = {}) {
     Object.assign(config, nextConfig);
     config.tickMs = 250;
+    config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 3500);
+    config.castsPerMinute = Math.max(1, Number(config.castsPerMinute) || 15);
+    config.activeMinutes = Math.max(0, Number(config.activeMinutes) || 0);
+    config.pauseMinutes = Math.max(0, Number(config.pauseMinutes) || 0);
     persistConfig();
     bot.log("rune config updated", { ...config });
     return { ...config };

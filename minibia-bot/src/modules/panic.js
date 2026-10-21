@@ -1,7 +1,7 @@
-window.__minibiaBotBundle = window.__minibiaBotBundle || {};
+window.__mageTuntunBundle = window.__mageTuntunBundle || {};
 
-window.__minibiaBotBundle.installPanicModule = function installPanicModule(bot) {
-  const configStorageKey = "minibiaBot.panic.config";
+window.__mageTuntunBundle.installPanicModule = function installPanicModule(bot) {
+  const configStorageKey = "mageTuntun.panic.config";
   const defaultGameMasterNames = ["God Minibia"];
   const state = {
     running: false,
