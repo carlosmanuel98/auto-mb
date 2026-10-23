@@ -17,6 +17,10 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     lastFollowStallAt: 0,
     lastKiteMoveAt: 0,
     lastKiteDestinationKey: null,
+    lastEngagedTargetPosition: null,
+    lootReturnPosition: null,
+    lootReturnStartedAt: 0,
+    lootReturnDestinationKey: null,
     skippedTargetIds: new Map(),
   };
 
@@ -35,6 +39,9 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       kiteMaxDistance: 5,
       kiteMoveCooldownMs: 350,
       ignoredMonsterNames: [],
+      priorityMonsterNames: [],
+      ignoreSummons: true,
+      kiteRetreatToRoute: true,
       enabled: false,
     },
     storedConfig
@@ -49,6 +56,9 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
   config.targetCooldownMs = Math.max(300, Number(config.targetCooldownMs) || 600);
   config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 2000);
   config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
+  config.priorityMonsterNames = normalizeMonsterNames(config.priorityMonsterNames);
+  config.ignoreSummons = config.ignoreSummons !== false;
+  config.kiteRetreatToRoute = config.kiteRetreatToRoute !== false;
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -81,6 +91,18 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
   function isIgnoredMonster(monster) {
     const name = String(monster?.name || "").trim().toLowerCase();
     return !!name && config.ignoredMonsterNames.some((ignoredName) => ignoredName.toLowerCase() === name);
+  }
+
+  function isSummon(monster) {
+    return Number(monster?.masterId) > 0;
+  }
+
+  function getMonsterPriority(monster) {
+    const name = String(monster?.name || "").trim().toLowerCase();
+    const priorityIndex = config.priorityMonsterNames.findIndex(
+      (priorityName) => priorityName.toLowerCase() === name
+    );
+    return priorityIndex === -1 ? Number.POSITIVE_INFINITY : priorityIndex;
   }
 
   function getCombatMovement() {
@@ -139,6 +161,27 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     );
   }
 
+  function getKiteRetreatWaypoint(playerPosition) {
+    if (!config.kiteRetreatToRoute) {
+      return null;
+    }
+
+    const caveStatus = bot.cave?.status?.();
+    if (!caveStatus?.running || !Array.isArray(caveStatus.route) || caveStatus.route.length < 2) {
+      return null;
+    }
+
+    const currentIndex = Math.trunc(Number(caveStatus.currentIndex));
+    const direction = Math.sign(Number(caveStatus.direction));
+    const previousIndex = currentIndex - direction;
+    if (!Number.isInteger(currentIndex) || !direction || previousIndex < 0 || previousIndex >= caveStatus.route.length) {
+      return null;
+    }
+
+    const waypoint = normalizePosition(caveStatus.route[previousIndex]);
+    return waypoint?.z === playerPosition?.z ? waypoint : null;
+  }
+
   function isSameCreature(left, right) {
     if (!left || !right) {
       return false;
@@ -195,6 +238,28 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     state.lastKiteDestinationKey = null;
   }
 
+  function rememberEngagedTargetPosition(target) {
+    const position = normalizePosition(target?.getPosition?.() || target?.__position);
+    if (position) {
+      state.lastEngagedTargetPosition = position;
+    }
+  }
+
+  function queueLastTargetApproach() {
+    const playerPosition = normalizePosition(bot.getPlayerPosition());
+    const targetPosition = state.lastEngagedTargetPosition;
+    if (!playerPosition || !targetPosition || playerPosition.z !== targetPosition.z ||
+      getTileDistance(playerPosition, targetPosition) === 0) {
+      return false;
+    }
+
+    state.lootReturnPosition = { ...targetPosition };
+    state.lootReturnStartedAt = Date.now();
+    state.lootReturnDestinationKey = null;
+    bot.log("approaching last target position", { destination: state.lootReturnPosition });
+    return true;
+  }
+
   function clearCurrentFollowTarget() {
     if (!window.gameClient?.player || typeof window.gameClient.send !== "function") {
       return false;
@@ -246,7 +311,7 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return false;
     }
 
-    return !!getEngagedTarget() || getMonsterCandidates().length > 0;
+    return !!getEngagedTarget() || !!state.lootReturnPosition || getMonsterCandidates().length > 0;
   }
 
   function syncCombatState(now = Date.now()) {
@@ -263,31 +328,39 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     const currentTarget = getCurrentTarget();
     if (state.engagedTargetId != null) {
       if (isSameCreature(currentTarget, { id: state.engagedTargetId })) {
+        rememberEngagedTargetPosition(currentTarget);
         return currentTarget;
       }
 
       const lockedTarget = findNearbyMonsterById(state.engagedTargetId);
       if (lockedTarget) {
+        rememberEngagedTargetPosition(lockedTarget);
         return lockedTarget;
       }
 
       const followTarget = getCurrentFollowTarget();
       if (followTarget && followTarget.id === state.engagedTargetId) {
-        return findNearbyMonster(followTarget) || followTarget;
+        const visibleFollowTarget = findNearbyMonster(followTarget) || followTarget;
+        rememberEngagedTargetPosition(visibleFollowTarget);
+        return visibleFollowTarget;
       }
 
+      queueLastTargetApproach();
       clearEngagedTarget();
     }
 
     if (currentTarget) {
       state.engagedTargetId = currentTarget.id;
+      rememberEngagedTargetPosition(currentTarget);
       return currentTarget;
     }
 
     const followTarget = getCurrentFollowTarget();
     if (followTarget) {
       state.engagedTargetId = followTarget.id;
-      return findNearbyMonster(followTarget) || followTarget;
+      const visibleFollowTarget = findNearbyMonster(followTarget) || followTarget;
+      rememberEngagedTargetPosition(visibleFollowTarget);
+      return visibleFollowTarget;
     }
 
     return null;
@@ -302,6 +375,37 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     return setCurrentTarget(engagedTarget);
   }
 
+  function syncPriorityTarget(now = Date.now()) {
+    const engagedTarget = getEngagedTarget();
+    if (!engagedTarget) {
+      return false;
+    }
+
+    const currentPriority = getMonsterPriority(engagedTarget);
+    const preferredTarget = getMonsterCandidates(now)[0];
+    if (!preferredTarget || isSameCreature(preferredTarget, engagedTarget)) {
+      return false;
+    }
+
+    const preferredPriority = getMonsterPriority(preferredTarget);
+    if (!(preferredPriority < currentPriority)) {
+      return false;
+    }
+
+    const previousTarget = engagedTarget;
+    clearCurrentFollowTarget();
+    resetFollowProgress();
+    state.lastKiteDestinationKey = null;
+    const switched = setCurrentTarget(preferredTarget);
+    if (switched) {
+      bot.log("switched auto attack target for priority", {
+        from: { id: previousTarget.id, name: previousTarget.name || "Mob", priority: currentPriority },
+        to: { id: preferredTarget.id, name: preferredTarget.name || "Mob", priority: preferredPriority },
+      });
+    }
+    return switched;
+  }
+
   function setCurrentTarget(target) {
     if (!target || !window.gameClient?.player || typeof window.gameClient.send !== "function") {
       return false;
@@ -314,6 +418,10 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     window.gameClient.player.setTarget(target);
     window.gameClient.send(new TargetPacket(target.id));
     state.engagedTargetId = target.id;
+    state.lootReturnPosition = null;
+    state.lootReturnStartedAt = 0;
+    state.lootReturnDestinationKey = null;
+    rememberEngagedTargetPosition(target);
     return true;
   }
 
@@ -373,36 +481,95 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
 
     const playerPosition = normalizePosition(bot.getPlayerPosition());
     return getNearbyMonsters()
-      .filter((monster) => !isIgnoredMonster(monster) && !isTargetSkipped(monster, now) && !shouldGiveUpTarget(monster))
+      .filter((monster) => (
+        !isIgnoredMonster(monster) &&
+        (!config.ignoreSummons || !isSummon(monster)) &&
+        !isTargetSkipped(monster, now)
+      ))
+      .filter((monster) => {
+        const invalidReason = getTargetInvalidReason(monster, playerPosition);
+        if (!invalidReason) {
+          return true;
+        }
+
+        // Avoid repeating a path search every tick for a monster visible
+        // through a wall or from another, disconnected spawn.
+        if (invalidReason === "no reachable combat tile" && monster?.id != null) {
+          state.skippedTargetIds.set(monster.id, now + 4000);
+        }
+        return false;
+      })
       .sort((left, right) => {
+        const priorityDifference = getMonsterPriority(left) - getMonsterPriority(right);
+        if (priorityDifference) {
+          return priorityDifference;
+        }
         const leftDistance = getTileDistance(playerPosition, normalizePosition(left?.getPosition?.() || left?.__position));
         const rightDistance = getTileDistance(playerPosition, normalizePosition(right?.getPosition?.() || right?.__position));
         return leftDistance - rightDistance || Number(left?.id || 0) - Number(right?.id || 0);
       });
   }
 
-  function shouldGiveUpTarget(target) {
-    if (isIgnoredMonster(target)) {
-      return true;
-    }
-
-    const maxTargetDistance = Math.max(1, Number(config.maxTargetDistance) || 8);
-    const playerPosition = normalizePosition(bot.getPlayerPosition());
+  function isReachableCombatTarget(target, playerPosition = normalizePosition(bot.getPlayerPosition())) {
     const targetPosition = normalizePosition(target?.getPosition?.() || target?.__position);
-    if (!playerPosition || !targetPosition) {
+    if (!playerPosition || !targetPosition || playerPosition.z !== targetPosition.z) {
       return false;
     }
 
-    return getTileDistance(playerPosition, targetPosition) > maxTargetDistance;
+    if (getTileDistance(playerPosition, targetPosition) <= 1) {
+      return true;
+    }
+
+    const pathfinder = window.gameClient?.world?.pathfinder;
+    const startTile = getTileFromPosition(playerPosition);
+    // Preserve distance-only selection while the world/pathfinder is loading.
+    if (!pathfinder || !startTile || typeof pathfinder.search !== "function") {
+      return true;
+    }
+
+    return !!findReachableAdjacentPosition(targetPosition, playerPosition);
+  }
+
+  function getTargetInvalidReason(target, playerPosition = normalizePosition(bot.getPlayerPosition())) {
+    if (isIgnoredMonster(target) || (config.ignoreSummons && isSummon(target))) {
+      return "ignored target";
+    }
+
+    // A selected target can outlive its creature update for a short time.
+    // Never keep attacking an id after its monster is no longer on screen.
+    if (target?.id != null && !findNearbyMonster(target)) {
+      return "target not visible";
+    }
+
+    const maxTargetDistance = Math.max(1, Number(config.maxTargetDistance) || 8);
+    const targetPosition = normalizePosition(target?.getPosition?.() || target?.__position);
+    if (!playerPosition || !targetPosition) {
+      return null;
+    }
+
+    if (getTileDistance(playerPosition, targetPosition) > maxTargetDistance) {
+      return "target too far";
+    }
+
+    return isReachableCombatTarget(target, playerPosition) ? null : "no reachable combat tile";
+  }
+
+  function shouldGiveUpTarget(target) {
+    return !!getTargetInvalidReason(target);
   }
 
   function resetTargetIfTooFar() {
     const currentTarget = getCurrentTarget();
-    if (currentTarget && shouldGiveUpTarget(currentTarget)) {
-      skipTarget(currentTarget, "target too far", Date.now(), 2500);
-      bot.log("gave up distant auto attack target", {
+    const currentTargetReason = getTargetInvalidReason(currentTarget);
+    if (currentTarget && currentTargetReason) {
+      if (currentTargetReason === "target not visible") {
+        queueLastTargetApproach();
+      }
+      skipTarget(currentTarget, currentTargetReason, Date.now(), 2500);
+      bot.log("gave up unreachable auto attack target", {
         id: currentTarget.id,
         name: currentTarget.name || "Mob",
+        reason: currentTargetReason,
         position: normalizePosition(currentTarget.getPosition?.() || currentTarget.__position),
         maxTargetDistance: Math.max(1, Number(config.maxTargetDistance) || 8),
       });
@@ -410,11 +577,13 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     const engagedTarget = getEngagedTarget();
-    if (engagedTarget && shouldGiveUpTarget(engagedTarget)) {
-      skipTarget(engagedTarget, "engaged target too far", Date.now(), 2500);
-      bot.log("gave up distant auto attack target", {
+    const engagedTargetReason = getTargetInvalidReason(engagedTarget);
+    if (engagedTarget && engagedTargetReason) {
+      skipTarget(engagedTarget, engagedTargetReason, Date.now(), 2500);
+      bot.log("gave up unreachable auto attack target", {
         id: engagedTarget.id,
         name: engagedTarget.name || "Mob",
+        reason: engagedTargetReason,
         position: normalizePosition(engagedTarget.getPosition?.() || engagedTarget.__position),
         maxTargetDistance: Math.max(1, Number(config.maxTargetDistance) || 8),
       });
@@ -568,10 +737,15 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
   }
 
   function findReachableKitePosition(targetPosition, playerPosition, currentDistance) {
-    const desiredDistance = Math.max(
-      1,
-      Math.trunc((Number(config.kiteMinDistance) + Number(config.kiteMaxDistance)) / 2) || 4
-    );
+    const minDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
+    const maxDistance = Math.max(minDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
+    // Build a buffer when the monster gets too close. Moving only from 1 to 2
+    // lets an equally-fast monster remain adjacent forever; target the upper
+    // edge instead, while still stopping anywhere inside the configured band.
+    const desiredDistance = maxDistance;
+    const retreatWaypoint = currentDistance < minDistance
+      ? getKiteRetreatWaypoint(playerPosition)
+      : null;
     const pathfinder = window.gameClient?.world?.pathfinder;
     const startTile = getTileFromPosition(playerPosition);
     if (!pathfinder || !startTile || typeof pathfinder.search !== "function") {
@@ -593,11 +767,20 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     candidates.sort((left, right) => {
+      if (retreatWaypoint) {
+        const leftProgress = getTileDistance(playerPosition, retreatWaypoint) - getTileDistance(left, retreatWaypoint);
+        const rightProgress = getTileDistance(playerPosition, retreatWaypoint) - getTileDistance(right, retreatWaypoint);
+        const leftMovesTowardRoute = leftProgress > 0;
+        const rightMovesTowardRoute = rightProgress > 0;
+        if (leftMovesTowardRoute !== rightMovesTowardRoute) {
+          return leftMovesTowardRoute ? -1 : 1;
+        }
+      }
       const leftDistance = getTileDistance(playerPosition, left);
       const rightDistance = getTileDistance(playerPosition, right);
-      return currentDistance <= Number(config.kiteMinDistance)
-        ? rightDistance - leftDistance
-        : leftDistance - rightDistance;
+      // The nearest reachable point on the desired ring makes the smallest
+      // possible correction (e.g. 3 -> 4, rather than 3 -> 7).
+      return leftDistance - rightDistance;
     });
 
     for (const candidate of candidates) {
@@ -635,7 +818,9 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     const currentDistance = getTileDistance(playerPosition, targetPosition);
     const minDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
     const maxDistance = Math.max(minDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
-    if (currentDistance > minDistance && currentDistance < maxDistance) {
+    // The configured endpoints are valid combat positions too. Moving again at
+    // exactly min/max made the character bounce around the boundary.
+    if (currentDistance >= minDistance && currentDistance <= maxDistance) {
       state.lastKiteDestinationKey = null;
       clearCurrentFollowTarget();
       return false;
@@ -650,6 +835,14 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return false;
     }
 
+    const destinationKey = getPositionKey(destination);
+    // findPath starts a walk asynchronously. Do not restart it every tick when
+    // the best tile has not changed; that made the player repeatedly run toward
+    // the same SQM instead of completing the current walk.
+    if (state.lastKiteDestinationKey === destinationKey) {
+      return false;
+    }
+
     try {
       clearCurrentFollowTarget();
       window.gameClient?.world?.pathfinder?.findPath?.(
@@ -657,7 +850,7 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
         new Position(destination.x, destination.y, destination.z)
       );
       state.lastKiteMoveAt = now;
-      state.lastKiteDestinationKey = getPositionKey(destination);
+      state.lastKiteDestinationKey = destinationKey;
       bot.log("repositioning auto attack target", {
         id: target.id,
         name: target.name || "Mob",
@@ -667,6 +860,47 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return true;
     } catch (error) {
       bot.log("auto attack kite movement failed", error?.message || error);
+      return false;
+    }
+  }
+
+  function syncLastTargetApproach(now = Date.now()) {
+    const destination = state.lootReturnPosition;
+    if (!destination) {
+      return false;
+    }
+
+    const playerPosition = normalizePosition(bot.getPlayerPosition());
+    if (!playerPosition || playerPosition.z !== destination.z || getTileDistance(playerPosition, destination) === 0) {
+      state.lootReturnPosition = null;
+      state.lootReturnStartedAt = 0;
+      state.lootReturnDestinationKey = null;
+      state.lastEngagedTargetPosition = null;
+      return false;
+    }
+
+    if (now - state.lootReturnStartedAt > 5000 || typeof Position !== "function") {
+      state.lootReturnPosition = null;
+      state.lootReturnStartedAt = 0;
+      state.lootReturnDestinationKey = null;
+      return false;
+    }
+
+    const destinationKey = getPositionKey(destination);
+    if (state.lootReturnDestinationKey === destinationKey) {
+      return true;
+    }
+
+    try {
+      window.gameClient?.world?.pathfinder?.findPath?.(
+        bot.getPlayerPosition(),
+        new Position(destination.x, destination.y, destination.z)
+      );
+      state.lootReturnDestinationKey = destinationKey;
+      return true;
+    } catch (error) {
+      bot.log("last target approach failed", error?.message || error);
+      state.lootReturnPosition = null;
       return false;
     }
   }
@@ -777,13 +1011,15 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return true;
     }
 
+    const switchedForPriority = syncPriorityTarget(now);
     syncLockedTarget();
+    const approachingLastTarget = syncLastTargetApproach(now);
     syncCombatState(now);
 
     if (getCombatMovement() === "kite") {
       const repositioned = syncKiteMovement(now);
       if (getCurrentTarget()) {
-        return triggerRune(now) || repositioned;
+      return triggerRune(now) || repositioned || switchedForPriority || approachingLastTarget;
       }
 
       return triggerAttack(now) || repositioned;
@@ -792,7 +1028,7 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     if (getCombatMovement() === "follow") {
       const chased = syncMeleeChase(now);
       if (getCurrentTarget()) {
-        return triggerRune(now) || chased;
+        return triggerRune(now) || chased || switchedForPriority || approachingLastTarget;
       }
 
       if (chased) {
@@ -801,10 +1037,10 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     if (getCurrentTarget()) {
-      return triggerRune(now);
+      return triggerRune(now) || switchedForPriority || approachingLastTarget;
     }
 
-    return triggerAttack(now);
+    return triggerAttack(now) || switchedForPriority || approachingLastTarget;
   }
 
   function scheduleNextTick() {
@@ -943,11 +1179,26 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       nextConfig.ignoredMonsterNames = normalizeMonsterNames(nextConfig.ignoredMonsterNames);
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "priorityMonsterNames")) {
+      nextConfig.priorityMonsterNames = normalizeMonsterNames(nextConfig.priorityMonsterNames);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "ignoreSummons")) {
+      nextConfig.ignoreSummons = nextConfig.ignoreSummons !== false;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "kiteRetreatToRoute")) {
+      nextConfig.kiteRetreatToRoute = nextConfig.kiteRetreatToRoute !== false;
+    }
+
     Object.assign(config, nextConfig);
     config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
     config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
     config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
     config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
+    config.priorityMonsterNames = normalizeMonsterNames(config.priorityMonsterNames);
+    config.ignoreSummons = config.ignoreSummons !== false;
+    config.kiteRetreatToRoute = config.kiteRetreatToRoute !== false;
     persistConfig();
     bot.log("auto attack config updated", { ...config });
     return { ...config };
@@ -976,9 +1227,11 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     getCurrentTarget,
     getCurrentFollowTarget,
     syncLockedTarget,
+    syncPriorityTarget,
     isCombatActive,
     syncMeleeChase,
     syncKiteMovement,
+    syncLastTargetApproach,
     getCombatMovement,
     normalizeHotbarSlot,
     config,

@@ -2481,6 +2481,7 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     timerId: null,
     lastHpHealAt: 0,
     lastManaHealAt: 0,
+    lastParalyzeHealAt: 0,
     lastHpAttemptAt: 0,
     lastManaAttemptAt: 0,
     pendingHpAttempt: null,
@@ -2500,6 +2501,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
       minMana: 150,
       minManaPercent: 30,
       manaHotbarSlot: 4,
+      paralyzeHotbarSlot: null,
+      paralyzeCooldownMs: 1000,
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
@@ -2508,6 +2511,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
   config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 30));
   config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 1800);
   config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+  config.paralyzeHotbarSlot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+  config.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -2546,6 +2551,35 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
 
   function hasPendingAttempt() {
     return !!(state.pendingHpAttempt || state.pendingManaAttempt);
+  }
+
+  function isParalyzed() {
+    const player = window.gameClient?.player;
+    const conditionId = window.ConditionManager?.prototype?.PARALYZE ?? 16;
+    return !!(
+      player?.conditions?.has?.(conditionId) ||
+      player?.conditions?.__conditions?.has?.(conditionId) ||
+      player?.hasCondition?.(conditionId)
+    );
+  }
+
+  function canUseParalyzeHeal(now = Date.now()) {
+    const slot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    return !!slot && isParalyzed() && now - state.lastParalyzeHealAt >= config.paralyzeCooldownMs;
+  }
+
+  function triggerParalyzeHeal(now = Date.now()) {
+    if (!canUseParalyzeHeal(now)) {
+      return false;
+    }
+
+    const slot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    const clicked = bot.clickHotbar(slot - 1);
+    if (clicked) {
+      state.lastParalyzeHealAt = now;
+      bot.log("pressed paralyze heal hotkey", { slot });
+    }
+    return clicked;
   }
 
   function didHpHealSucceed(stats, attempt) {
@@ -2675,6 +2709,10 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
 
     resolvePendingAttempts(stats, now);
 
+    if (triggerParalyzeHeal(now)) {
+      return true;
+    }
+
     if (hasPendingAttempt()) {
       return false;
     }
@@ -2715,6 +2753,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     }
     config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 1800);
     config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    config.paralyzeHotbarSlot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    config.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -2752,6 +2792,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
       stats: readStats(),
       lastHpHealAt: state.lastHpHealAt,
       lastManaHealAt: state.lastManaHealAt,
+      lastParalyzeHealAt: state.lastParalyzeHealAt,
+      paralyzed: isParalyzed(),
       lastHpAttemptAt: state.lastHpAttemptAt,
       lastManaAttemptAt: state.lastManaAttemptAt,
       pendingHpAttempt: state.pendingHpAttempt ? { ...state.pendingHpAttempt } : null,
@@ -2766,6 +2808,14 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "manaHotbarSlot")) {
       nextConfig.manaHotbarSlot = normalizeHotbarSlot(nextConfig.manaHotbarSlot) ?? config.manaHotbarSlot;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "paralyzeHotbarSlot")) {
+      nextConfig.paralyzeHotbarSlot = normalizeHotbarSlot(nextConfig.paralyzeHotbarSlot);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "paralyzeCooldownMs")) {
+      nextConfig.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "minHp")) {
@@ -2811,6 +2861,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 30));
     config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 1800);
     config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    config.paralyzeHotbarSlot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    config.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };
@@ -2829,8 +2881,11 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     tryHeal,
     canUseHpHeal,
     canUseManaHeal,
+    canUseParalyzeHeal,
     triggerHpHeal,
     triggerManaHeal,
+    triggerParalyzeHeal,
+    isParalyzed,
     normalizeHotbarSlot,
     config,
   };
@@ -3681,6 +3736,10 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     lastFollowStallAt: 0,
     lastKiteMoveAt: 0,
     lastKiteDestinationKey: null,
+    lastEngagedTargetPosition: null,
+    lootReturnPosition: null,
+    lootReturnStartedAt: 0,
+    lootReturnDestinationKey: null,
     skippedTargetIds: new Map(),
   };
 
@@ -3699,6 +3758,9 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       kiteMaxDistance: 5,
       kiteMoveCooldownMs: 350,
       ignoredMonsterNames: [],
+      priorityMonsterNames: [],
+      ignoreSummons: true,
+      kiteRetreatToRoute: true,
       enabled: false,
     },
     storedConfig
@@ -3713,6 +3775,9 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
   config.targetCooldownMs = Math.max(300, Number(config.targetCooldownMs) || 600);
   config.runeCooldownMs = Math.max(1000, Number(config.runeCooldownMs) || 2000);
   config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
+  config.priorityMonsterNames = normalizeMonsterNames(config.priorityMonsterNames);
+  config.ignoreSummons = config.ignoreSummons !== false;
+  config.kiteRetreatToRoute = config.kiteRetreatToRoute !== false;
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -3745,6 +3810,18 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
   function isIgnoredMonster(monster) {
     const name = String(monster?.name || "").trim().toLowerCase();
     return !!name && config.ignoredMonsterNames.some((ignoredName) => ignoredName.toLowerCase() === name);
+  }
+
+  function isSummon(monster) {
+    return Number(monster?.masterId) > 0;
+  }
+
+  function getMonsterPriority(monster) {
+    const name = String(monster?.name || "").trim().toLowerCase();
+    const priorityIndex = config.priorityMonsterNames.findIndex(
+      (priorityName) => priorityName.toLowerCase() === name
+    );
+    return priorityIndex === -1 ? Number.POSITIVE_INFINITY : priorityIndex;
   }
 
   function getCombatMovement() {
@@ -3803,6 +3880,27 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     );
   }
 
+  function getKiteRetreatWaypoint(playerPosition) {
+    if (!config.kiteRetreatToRoute) {
+      return null;
+    }
+
+    const caveStatus = bot.cave?.status?.();
+    if (!caveStatus?.running || !Array.isArray(caveStatus.route) || caveStatus.route.length < 2) {
+      return null;
+    }
+
+    const currentIndex = Math.trunc(Number(caveStatus.currentIndex));
+    const direction = Math.sign(Number(caveStatus.direction));
+    const previousIndex = currentIndex - direction;
+    if (!Number.isInteger(currentIndex) || !direction || previousIndex < 0 || previousIndex >= caveStatus.route.length) {
+      return null;
+    }
+
+    const waypoint = normalizePosition(caveStatus.route[previousIndex]);
+    return waypoint?.z === playerPosition?.z ? waypoint : null;
+  }
+
   function isSameCreature(left, right) {
     if (!left || !right) {
       return false;
@@ -3859,6 +3957,28 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     state.lastKiteDestinationKey = null;
   }
 
+  function rememberEngagedTargetPosition(target) {
+    const position = normalizePosition(target?.getPosition?.() || target?.__position);
+    if (position) {
+      state.lastEngagedTargetPosition = position;
+    }
+  }
+
+  function queueLastTargetApproach() {
+    const playerPosition = normalizePosition(bot.getPlayerPosition());
+    const targetPosition = state.lastEngagedTargetPosition;
+    if (!playerPosition || !targetPosition || playerPosition.z !== targetPosition.z ||
+      getTileDistance(playerPosition, targetPosition) === 0) {
+      return false;
+    }
+
+    state.lootReturnPosition = { ...targetPosition };
+    state.lootReturnStartedAt = Date.now();
+    state.lootReturnDestinationKey = null;
+    bot.log("approaching last target position", { destination: state.lootReturnPosition });
+    return true;
+  }
+
   function clearCurrentFollowTarget() {
     if (!window.gameClient?.player || typeof window.gameClient.send !== "function") {
       return false;
@@ -3910,7 +4030,7 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return false;
     }
 
-    return !!getEngagedTarget() || getMonsterCandidates().length > 0;
+    return !!getEngagedTarget() || !!state.lootReturnPosition || getMonsterCandidates().length > 0;
   }
 
   function syncCombatState(now = Date.now()) {
@@ -3927,31 +4047,39 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     const currentTarget = getCurrentTarget();
     if (state.engagedTargetId != null) {
       if (isSameCreature(currentTarget, { id: state.engagedTargetId })) {
+        rememberEngagedTargetPosition(currentTarget);
         return currentTarget;
       }
 
       const lockedTarget = findNearbyMonsterById(state.engagedTargetId);
       if (lockedTarget) {
+        rememberEngagedTargetPosition(lockedTarget);
         return lockedTarget;
       }
 
       const followTarget = getCurrentFollowTarget();
       if (followTarget && followTarget.id === state.engagedTargetId) {
-        return findNearbyMonster(followTarget) || followTarget;
+        const visibleFollowTarget = findNearbyMonster(followTarget) || followTarget;
+        rememberEngagedTargetPosition(visibleFollowTarget);
+        return visibleFollowTarget;
       }
 
+      queueLastTargetApproach();
       clearEngagedTarget();
     }
 
     if (currentTarget) {
       state.engagedTargetId = currentTarget.id;
+      rememberEngagedTargetPosition(currentTarget);
       return currentTarget;
     }
 
     const followTarget = getCurrentFollowTarget();
     if (followTarget) {
       state.engagedTargetId = followTarget.id;
-      return findNearbyMonster(followTarget) || followTarget;
+      const visibleFollowTarget = findNearbyMonster(followTarget) || followTarget;
+      rememberEngagedTargetPosition(visibleFollowTarget);
+      return visibleFollowTarget;
     }
 
     return null;
@@ -3966,6 +4094,37 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     return setCurrentTarget(engagedTarget);
   }
 
+  function syncPriorityTarget(now = Date.now()) {
+    const engagedTarget = getEngagedTarget();
+    if (!engagedTarget) {
+      return false;
+    }
+
+    const currentPriority = getMonsterPriority(engagedTarget);
+    const preferredTarget = getMonsterCandidates(now)[0];
+    if (!preferredTarget || isSameCreature(preferredTarget, engagedTarget)) {
+      return false;
+    }
+
+    const preferredPriority = getMonsterPriority(preferredTarget);
+    if (!(preferredPriority < currentPriority)) {
+      return false;
+    }
+
+    const previousTarget = engagedTarget;
+    clearCurrentFollowTarget();
+    resetFollowProgress();
+    state.lastKiteDestinationKey = null;
+    const switched = setCurrentTarget(preferredTarget);
+    if (switched) {
+      bot.log("switched auto attack target for priority", {
+        from: { id: previousTarget.id, name: previousTarget.name || "Mob", priority: currentPriority },
+        to: { id: preferredTarget.id, name: preferredTarget.name || "Mob", priority: preferredPriority },
+      });
+    }
+    return switched;
+  }
+
   function setCurrentTarget(target) {
     if (!target || !window.gameClient?.player || typeof window.gameClient.send !== "function") {
       return false;
@@ -3978,6 +4137,10 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     window.gameClient.player.setTarget(target);
     window.gameClient.send(new TargetPacket(target.id));
     state.engagedTargetId = target.id;
+    state.lootReturnPosition = null;
+    state.lootReturnStartedAt = 0;
+    state.lootReturnDestinationKey = null;
+    rememberEngagedTargetPosition(target);
     return true;
   }
 
@@ -4037,36 +4200,95 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
 
     const playerPosition = normalizePosition(bot.getPlayerPosition());
     return getNearbyMonsters()
-      .filter((monster) => !isIgnoredMonster(monster) && !isTargetSkipped(monster, now) && !shouldGiveUpTarget(monster))
+      .filter((monster) => (
+        !isIgnoredMonster(monster) &&
+        (!config.ignoreSummons || !isSummon(monster)) &&
+        !isTargetSkipped(monster, now)
+      ))
+      .filter((monster) => {
+        const invalidReason = getTargetInvalidReason(monster, playerPosition);
+        if (!invalidReason) {
+          return true;
+        }
+
+        // Avoid repeating a path search every tick for a monster visible
+        // through a wall or from another, disconnected spawn.
+        if (invalidReason === "no reachable combat tile" && monster?.id != null) {
+          state.skippedTargetIds.set(monster.id, now + 4000);
+        }
+        return false;
+      })
       .sort((left, right) => {
+        const priorityDifference = getMonsterPriority(left) - getMonsterPriority(right);
+        if (priorityDifference) {
+          return priorityDifference;
+        }
         const leftDistance = getTileDistance(playerPosition, normalizePosition(left?.getPosition?.() || left?.__position));
         const rightDistance = getTileDistance(playerPosition, normalizePosition(right?.getPosition?.() || right?.__position));
         return leftDistance - rightDistance || Number(left?.id || 0) - Number(right?.id || 0);
       });
   }
 
-  function shouldGiveUpTarget(target) {
-    if (isIgnoredMonster(target)) {
-      return true;
-    }
-
-    const maxTargetDistance = Math.max(1, Number(config.maxTargetDistance) || 8);
-    const playerPosition = normalizePosition(bot.getPlayerPosition());
+  function isReachableCombatTarget(target, playerPosition = normalizePosition(bot.getPlayerPosition())) {
     const targetPosition = normalizePosition(target?.getPosition?.() || target?.__position);
-    if (!playerPosition || !targetPosition) {
+    if (!playerPosition || !targetPosition || playerPosition.z !== targetPosition.z) {
       return false;
     }
 
-    return getTileDistance(playerPosition, targetPosition) > maxTargetDistance;
+    if (getTileDistance(playerPosition, targetPosition) <= 1) {
+      return true;
+    }
+
+    const pathfinder = window.gameClient?.world?.pathfinder;
+    const startTile = getTileFromPosition(playerPosition);
+    // Preserve distance-only selection while the world/pathfinder is loading.
+    if (!pathfinder || !startTile || typeof pathfinder.search !== "function") {
+      return true;
+    }
+
+    return !!findReachableAdjacentPosition(targetPosition, playerPosition);
+  }
+
+  function getTargetInvalidReason(target, playerPosition = normalizePosition(bot.getPlayerPosition())) {
+    if (isIgnoredMonster(target) || (config.ignoreSummons && isSummon(target))) {
+      return "ignored target";
+    }
+
+    // A selected target can outlive its creature update for a short time.
+    // Never keep attacking an id after its monster is no longer on screen.
+    if (target?.id != null && !findNearbyMonster(target)) {
+      return "target not visible";
+    }
+
+    const maxTargetDistance = Math.max(1, Number(config.maxTargetDistance) || 8);
+    const targetPosition = normalizePosition(target?.getPosition?.() || target?.__position);
+    if (!playerPosition || !targetPosition) {
+      return null;
+    }
+
+    if (getTileDistance(playerPosition, targetPosition) > maxTargetDistance) {
+      return "target too far";
+    }
+
+    return isReachableCombatTarget(target, playerPosition) ? null : "no reachable combat tile";
+  }
+
+  function shouldGiveUpTarget(target) {
+    return !!getTargetInvalidReason(target);
   }
 
   function resetTargetIfTooFar() {
     const currentTarget = getCurrentTarget();
-    if (currentTarget && shouldGiveUpTarget(currentTarget)) {
-      skipTarget(currentTarget, "target too far", Date.now(), 2500);
-      bot.log("gave up distant auto attack target", {
+    const currentTargetReason = getTargetInvalidReason(currentTarget);
+    if (currentTarget && currentTargetReason) {
+      if (currentTargetReason === "target not visible") {
+        queueLastTargetApproach();
+      }
+      skipTarget(currentTarget, currentTargetReason, Date.now(), 2500);
+      bot.log("gave up unreachable auto attack target", {
         id: currentTarget.id,
         name: currentTarget.name || "Mob",
+        reason: currentTargetReason,
         position: normalizePosition(currentTarget.getPosition?.() || currentTarget.__position),
         maxTargetDistance: Math.max(1, Number(config.maxTargetDistance) || 8),
       });
@@ -4074,11 +4296,13 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     const engagedTarget = getEngagedTarget();
-    if (engagedTarget && shouldGiveUpTarget(engagedTarget)) {
-      skipTarget(engagedTarget, "engaged target too far", Date.now(), 2500);
-      bot.log("gave up distant auto attack target", {
+    const engagedTargetReason = getTargetInvalidReason(engagedTarget);
+    if (engagedTarget && engagedTargetReason) {
+      skipTarget(engagedTarget, engagedTargetReason, Date.now(), 2500);
+      bot.log("gave up unreachable auto attack target", {
         id: engagedTarget.id,
         name: engagedTarget.name || "Mob",
+        reason: engagedTargetReason,
         position: normalizePosition(engagedTarget.getPosition?.() || engagedTarget.__position),
         maxTargetDistance: Math.max(1, Number(config.maxTargetDistance) || 8),
       });
@@ -4232,10 +4456,15 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
   }
 
   function findReachableKitePosition(targetPosition, playerPosition, currentDistance) {
-    const desiredDistance = Math.max(
-      1,
-      Math.trunc((Number(config.kiteMinDistance) + Number(config.kiteMaxDistance)) / 2) || 4
-    );
+    const minDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
+    const maxDistance = Math.max(minDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
+    // Build a buffer when the monster gets too close. Moving only from 1 to 2
+    // lets an equally-fast monster remain adjacent forever; target the upper
+    // edge instead, while still stopping anywhere inside the configured band.
+    const desiredDistance = maxDistance;
+    const retreatWaypoint = currentDistance < minDistance
+      ? getKiteRetreatWaypoint(playerPosition)
+      : null;
     const pathfinder = window.gameClient?.world?.pathfinder;
     const startTile = getTileFromPosition(playerPosition);
     if (!pathfinder || !startTile || typeof pathfinder.search !== "function") {
@@ -4257,11 +4486,20 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     candidates.sort((left, right) => {
+      if (retreatWaypoint) {
+        const leftProgress = getTileDistance(playerPosition, retreatWaypoint) - getTileDistance(left, retreatWaypoint);
+        const rightProgress = getTileDistance(playerPosition, retreatWaypoint) - getTileDistance(right, retreatWaypoint);
+        const leftMovesTowardRoute = leftProgress > 0;
+        const rightMovesTowardRoute = rightProgress > 0;
+        if (leftMovesTowardRoute !== rightMovesTowardRoute) {
+          return leftMovesTowardRoute ? -1 : 1;
+        }
+      }
       const leftDistance = getTileDistance(playerPosition, left);
       const rightDistance = getTileDistance(playerPosition, right);
-      return currentDistance <= Number(config.kiteMinDistance)
-        ? rightDistance - leftDistance
-        : leftDistance - rightDistance;
+      // The nearest reachable point on the desired ring makes the smallest
+      // possible correction (e.g. 3 -> 4, rather than 3 -> 7).
+      return leftDistance - rightDistance;
     });
 
     for (const candidate of candidates) {
@@ -4299,7 +4537,9 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     const currentDistance = getTileDistance(playerPosition, targetPosition);
     const minDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
     const maxDistance = Math.max(minDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
-    if (currentDistance > minDistance && currentDistance < maxDistance) {
+    // The configured endpoints are valid combat positions too. Moving again at
+    // exactly min/max made the character bounce around the boundary.
+    if (currentDistance >= minDistance && currentDistance <= maxDistance) {
       state.lastKiteDestinationKey = null;
       clearCurrentFollowTarget();
       return false;
@@ -4314,6 +4554,14 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return false;
     }
 
+    const destinationKey = getPositionKey(destination);
+    // findPath starts a walk asynchronously. Do not restart it every tick when
+    // the best tile has not changed; that made the player repeatedly run toward
+    // the same SQM instead of completing the current walk.
+    if (state.lastKiteDestinationKey === destinationKey) {
+      return false;
+    }
+
     try {
       clearCurrentFollowTarget();
       window.gameClient?.world?.pathfinder?.findPath?.(
@@ -4321,7 +4569,7 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
         new Position(destination.x, destination.y, destination.z)
       );
       state.lastKiteMoveAt = now;
-      state.lastKiteDestinationKey = getPositionKey(destination);
+      state.lastKiteDestinationKey = destinationKey;
       bot.log("repositioning auto attack target", {
         id: target.id,
         name: target.name || "Mob",
@@ -4331,6 +4579,47 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return true;
     } catch (error) {
       bot.log("auto attack kite movement failed", error?.message || error);
+      return false;
+    }
+  }
+
+  function syncLastTargetApproach(now = Date.now()) {
+    const destination = state.lootReturnPosition;
+    if (!destination) {
+      return false;
+    }
+
+    const playerPosition = normalizePosition(bot.getPlayerPosition());
+    if (!playerPosition || playerPosition.z !== destination.z || getTileDistance(playerPosition, destination) === 0) {
+      state.lootReturnPosition = null;
+      state.lootReturnStartedAt = 0;
+      state.lootReturnDestinationKey = null;
+      state.lastEngagedTargetPosition = null;
+      return false;
+    }
+
+    if (now - state.lootReturnStartedAt > 5000 || typeof Position !== "function") {
+      state.lootReturnPosition = null;
+      state.lootReturnStartedAt = 0;
+      state.lootReturnDestinationKey = null;
+      return false;
+    }
+
+    const destinationKey = getPositionKey(destination);
+    if (state.lootReturnDestinationKey === destinationKey) {
+      return true;
+    }
+
+    try {
+      window.gameClient?.world?.pathfinder?.findPath?.(
+        bot.getPlayerPosition(),
+        new Position(destination.x, destination.y, destination.z)
+      );
+      state.lootReturnDestinationKey = destinationKey;
+      return true;
+    } catch (error) {
+      bot.log("last target approach failed", error?.message || error);
+      state.lootReturnPosition = null;
       return false;
     }
   }
@@ -4441,13 +4730,15 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       return true;
     }
 
+    const switchedForPriority = syncPriorityTarget(now);
     syncLockedTarget();
+    const approachingLastTarget = syncLastTargetApproach(now);
     syncCombatState(now);
 
     if (getCombatMovement() === "kite") {
       const repositioned = syncKiteMovement(now);
       if (getCurrentTarget()) {
-        return triggerRune(now) || repositioned;
+      return triggerRune(now) || repositioned || switchedForPriority || approachingLastTarget;
       }
 
       return triggerAttack(now) || repositioned;
@@ -4456,7 +4747,7 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     if (getCombatMovement() === "follow") {
       const chased = syncMeleeChase(now);
       if (getCurrentTarget()) {
-        return triggerRune(now) || chased;
+        return triggerRune(now) || chased || switchedForPriority || approachingLastTarget;
       }
 
       if (chased) {
@@ -4465,10 +4756,10 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     }
 
     if (getCurrentTarget()) {
-      return triggerRune(now);
+      return triggerRune(now) || switchedForPriority || approachingLastTarget;
     }
 
-    return triggerAttack(now);
+    return triggerAttack(now) || switchedForPriority || approachingLastTarget;
   }
 
   function scheduleNextTick() {
@@ -4607,11 +4898,26 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
       nextConfig.ignoredMonsterNames = normalizeMonsterNames(nextConfig.ignoredMonsterNames);
     }
 
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "priorityMonsterNames")) {
+      nextConfig.priorityMonsterNames = normalizeMonsterNames(nextConfig.priorityMonsterNames);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "ignoreSummons")) {
+      nextConfig.ignoreSummons = nextConfig.ignoreSummons !== false;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "kiteRetreatToRoute")) {
+      nextConfig.kiteRetreatToRoute = nextConfig.kiteRetreatToRoute !== false;
+    }
+
     Object.assign(config, nextConfig);
     config.combatMovement = config.combatMovement === "kite" ? "kite" : "auto";
     config.kiteMinDistance = Math.max(1, Math.trunc(Number(config.kiteMinDistance) || 3));
     config.kiteMaxDistance = Math.max(config.kiteMinDistance, Math.trunc(Number(config.kiteMaxDistance) || 5));
     config.ignoredMonsterNames = normalizeMonsterNames(config.ignoredMonsterNames);
+    config.priorityMonsterNames = normalizeMonsterNames(config.priorityMonsterNames);
+    config.ignoreSummons = config.ignoreSummons !== false;
+    config.kiteRetreatToRoute = config.kiteRetreatToRoute !== false;
     persistConfig();
     bot.log("auto attack config updated", { ...config });
     return { ...config };
@@ -4640,9 +4946,11 @@ window.__mageTuntunBundle.installAutoAttackModule = function installAutoAttackMo
     getCurrentTarget,
     getCurrentFollowTarget,
     syncLockedTarget,
+    syncPriorityTarget,
     isCombatActive,
     syncMeleeChase,
     syncKiteMovement,
+    syncLastTargetApproach,
     getCombatMovement,
     normalizeHotbarSlot,
     config,
@@ -4667,6 +4975,28 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     /\bgravel pile\b/i,
     /\bdirt pile\b/i,
   ];
+  const defaultRareItemNames = [
+    "Fire Sword",
+    "Magic Sword",
+    "Giant Sword",
+    "Stonecutter Axe",
+    "Thunder Hammer",
+    "Dragon Scale Mail",
+    "Golden Armor",
+    "Demon Armor",
+    "Crown Armor",
+    "Knight Armor",
+    "Royal Helmet",
+    "Warrior Helmet",
+    "Guardian Halberd",
+    "Dragon Lance",
+    "Dragon Shield",
+    "Vampire Shield",
+    "Crown Legs",
+    "Demon Shield",
+    "Tower Shield",
+    "Mastermind Shield",
+  ];
   const state = {
     running: false,
     timerId: null,
@@ -4681,6 +5011,7 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     lastCavePosition: null,
     pendingTransitionSource: null,
     pausedForCombat: false,
+    alertedRareItemKeys: new Set(),
   };
   const minimapOverlayState = {
     timerId: null,
@@ -4695,11 +5026,19 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
       unexpectedRelocationDistance: 10,
       enabled: false,
       unexpectedMonsterAlertEnabled: true,
+      rareItemNames: defaultRareItemNames,
+      rareItemDetectByRarity: true,
+      rareItemAlertEnabled: true,
+      rareItemPauseCavebot: true,
       activePresetName: defaultPresetName,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 500;
+  config.rareItemNames = normalizeMonsterNames(config.rareItemNames);
+  config.rareItemDetectByRarity = config.rareItemDetectByRarity !== false;
+  config.rareItemAlertEnabled = config.rareItemAlertEnabled !== false;
+  config.rareItemPauseCavebot = config.rareItemPauseCavebot !== false;
 
   function normalizePresetName(value) {
     const normalized = String(value || "").trim().replace(/\s+/g, " ");
@@ -5196,6 +5535,12 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
   function getThingName(thing) {
     const definition = getThingDefinition(thing?.id);
     return String(definition?.properties?.name || thing?.name || "").trim().toLowerCase();
+  }
+
+  function getThingRarity(thing) {
+    const definition = getThingDefinition(thing?.id);
+    const rarity = Number(thing?.getDataObject?.()?.properties?.rarity ?? definition?.properties?.rarity);
+    return Number.isFinite(rarity) ? rarity : 0;
   }
 
   function isLadderThing(thing) {
@@ -6109,6 +6454,63 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     );
   }
 
+  function getVisibleRareItems(position) {
+    if (!config.rareItemNames.length || !position) {
+      return [];
+    }
+
+    const rareNames = new Set(config.rareItemNames.map((name) => name.toLowerCase()));
+    return getLoadedTiles().flatMap((tile) => {
+      const tilePosition = getTilePosition(tile);
+      if (!tilePosition || tilePosition.z !== position.z ||
+        Math.abs(tilePosition.x - position.x) > 8 || Math.abs(tilePosition.y - position.y) > 6) {
+        return [];
+      }
+
+      return getTileThings(tile)
+        .map((thing) => ({
+          name: getThingName(thing),
+          rarity: getThingRarity(thing),
+          position: tilePosition,
+        }))
+        .filter((item) => rareNames.has(item.name) || (config.rareItemDetectByRarity && item.rarity >= 2));
+    });
+  }
+
+  function stopForRareItems(items) {
+    if (!items.length) {
+      return false;
+    }
+
+    const newItems = items.filter((item) => {
+      const key = `${item.name}@${item.position.x},${item.position.y},${item.position.z}`;
+      if (state.alertedRareItemKeys.has(key)) {
+        return false;
+      }
+      state.alertedRareItemKeys.add(key);
+      return true;
+    });
+    if (!newItems.length) {
+      return false;
+    }
+
+    const names = Array.from(new Set(newItems.map((item) => item.name)));
+    if (config.rareItemAlertEnabled) {
+      bot.playAlarm?.();
+    }
+    bot.log("rare item detected", { items: newItems });
+
+    if (!config.rareItemPauseCavebot) {
+      return true;
+    }
+
+    const reason = `Rare item detected: ${names.join(", ")}`;
+    bot.setStopReason?.(reason, { items: newItems });
+    stop({ reason });
+    bot.ui?.refreshCaveStatus?.();
+    return true;
+  }
+
   function stopForUnexpectedMonsters(monsters) {
     if (!monsters.length) {
       return false;
@@ -6143,6 +6545,10 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
         return;
       }
       observePosition();
+
+      if (stopForRareItems(getVisibleRareItems(position))) {
+        return;
+      }
 
       if (stopForUnexpectedMonsters(getUnexpectedVisibleMonsters())) {
         return;
@@ -6263,6 +6669,7 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     state.lastCavePosition = position;
     state.lastProgressAt = Date.now();
     state.pausedForCombat = false;
+    state.alertedRareItemKeys.clear();
     bot.log("cave bot started", {
       waypoints: route.length,
       currentIndex: state.currentIndex + 1,
@@ -6424,8 +6831,24 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
   }
 
   function updateConfig(nextConfig = {}) {
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemNames")) {
+      nextConfig.rareItemNames = normalizeMonsterNames(nextConfig.rareItemNames);
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemAlertEnabled")) {
+      nextConfig.rareItemAlertEnabled = nextConfig.rareItemAlertEnabled !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemDetectByRarity")) {
+      nextConfig.rareItemDetectByRarity = nextConfig.rareItemDetectByRarity !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemPauseCavebot")) {
+      nextConfig.rareItemPauseCavebot = nextConfig.rareItemPauseCavebot !== false;
+    }
     Object.assign(config, nextConfig);
     config.tickMs = 500;
+    config.rareItemNames = normalizeMonsterNames(config.rareItemNames);
+    config.rareItemDetectByRarity = config.rareItemDetectByRarity !== false;
+    config.rareItemAlertEnabled = config.rareItemAlertEnabled !== false;
+    config.rareItemPauseCavebot = config.rareItemPauseCavebot !== false;
     persistConfig();
     bot.log("cave config updated", { ...config });
     return { ...config };
@@ -6453,6 +6876,7 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     getPresetNames,
     getActivePresetName,
     getCurrentWaypoint,
+    getVisibleRareItems,
     createPreset,
     savePreset,
     loadPreset,
@@ -7929,6 +8353,20 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
     );
   }
 
+  function isPlayerInProtectionZone() {
+    if (!config.ignoreGmInPz) {
+      return false;
+    }
+
+    const player = window.gameClient?.player;
+    const pzConditionId = window.ConditionManager?.prototype?.PROTECTION_ZONE ?? 5;
+    if (player?.conditions?.has?.(pzConditionId) || player?.hasCondition?.(pzConditionId)) {
+      return true;
+    }
+
+    return !!bot.pz?.isPositionInPz?.(bot.getPlayerPosition?.());
+  }
+
   function isCreatureVisuallyVisible(creature, me) {
     if (!creature?.__position || creature.__position.z !== me?.z) {
       return false;
@@ -7970,12 +8408,6 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
 
       if (!isCreatureVisuallyVisible(creature, me)) {
         return false;
-      }
-
-      if (config.ignoreGmInPz && bot.pz?.isPositionInPz) {
-        if (bot.pz.isPositionInPz(creature.__position)) {
-          return false;
-        }
       }
 
       return true;
@@ -8053,7 +8485,7 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
         state.gmSeenHistory.set(primaryName, now);
         bot.log("gm detected on screen", { staff: staffNames });
 
-        if (config.soundOnGm) {
+        if (config.soundOnGm && !isPlayerInProtectionZone()) {
           bot.playAlarm?.();
         }
 
@@ -8159,7 +8591,7 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
       if (config.pauseHuntingOnGm) {
         pauseAutomations(`GM message from ${msg.sender}`);
       }
-      if (config.soundOnGm) {
+      if (config.soundOnGm && !isPlayerInProtectionZone()) {
         bot.playAlarm?.();
       }
       queueRandomReplies(`GM chat: ${msg.sender}`, staffName);
@@ -8206,7 +8638,7 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
       if (bodyNorm.includes(selfName)) {
         bot.log("character name mentioned in chat", { sender: msg.sender, message: msg.message });
 
-        if (config.soundOnName) {
+        if (config.soundOnName && !isPlayerInProtectionZone()) {
           bot.playAlarm?.();
         }
 
@@ -9971,7 +10403,7 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
               </label>
               <label class="mb-toggle">
                 <input type="checkbox" id="mage-tuntun-gm-ignore-pz" />
-                <span>Ignore GMs in protection zone (PZ)</span>
+                <span>Mute GM alarms in PZ (still pauses)</span>
               </label>
               <label class="mb-toggle">
                 <input type="checkbox" id="mage-tuntun-gm-react-name" />
@@ -10131,7 +10563,7 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
             </div>
           </div>
           <div class="mb-section mb-column-section">
-            <div class="mb-note">Loaded routines: Panic Runner, magic level trainer, auto eat, auto haste, auto invisible, auto utamo vita, equip ring, auto heal, auto attack, and talk.</div>
+            <div class="mb-note">Loaded routines: Panic Runner, magic level trainer, auto eat, auto haste, auto invisible, auto utamo vita, equip ring, auto heal, and auto attack.</div>
           </div>
         </div>
         <div class="mb-side-column">
@@ -10182,21 +10614,17 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
                   <input type="number" id="mage-tuntun-auto-heal-mana-cooldown" min="1000" placeholder="1000" />
                 </label>
               </div>
+              <div class="mb-row">
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-auto-heal-paralyze-enabled" />
+                  <span>Remove Paralyze</span>
+                </label>
+                <label class="mb-field mb-field-compact" for="mage-tuntun-auto-heal-paralyze-hotkey">
+                  <span class="mb-field-label">Paralyze Hotkey (1-12)</span>
+                  <input type="number" id="mage-tuntun-auto-heal-paralyze-hotkey" min="1" max="12" placeholder="" />
+                </label>
+              </div>
               <div class="mb-small-note">Checks about twenty times per second. HP is used before mana; each hotkey has its own spell cooldown.</div>
-            </div>
-          </div>
-          <div class="mb-section mb-column-section">
-            <div class="mb-label">Auto Responder / Chat</div>
-            <div class="mb-stack">
-              <label class="mb-toggle">
-                <input type="checkbox" id="mage-tuntun-talk-enabled" />
-                <span>Activar Auto Responder</span>
-              </label>
-              <input type="password" id="mage-tuntun-talk-api-key" placeholder="Gemini API key (opcional para IA)" />
-              <textarea id="mage-tuntun-talk-prompt" placeholder="Instrucciones de respuesta (prompt estilo jugador)..."></textarea>
-              <div class="mb-small-note" id="mage-tuntun-talk-status">Estado: inactivo</div>
-              <div class="mb-small-note">Responde en Default a jugadores cercanos en el spawn.</div>
-              <div class="mb-small-note">Sin API key usa respuestas rápidas de jugador. Nunca admite ser bot.</div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
@@ -10243,6 +10671,24 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
                 <span class="mb-field-label">Allowed monsters (comma separated)</span>
                 <input type="text" id="mage-tuntun-cave-allowed-monsters" placeholder="Cyclops, Cyclops Drone" />
               </label>
+              <label class="mb-field" for="mage-tuntun-cave-rare-items">
+                <span class="mb-field-label">Rare item alert (comma separated)</span>
+                <input type="text" id="mage-tuntun-cave-rare-items" placeholder="Fire Sword, Dragon Scale Mail, Golden Armor" />
+              </label>
+              <div class="mb-row">
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-cave-rare-item-rarity" />
+                  <span>Detect rare+ automatically</span>
+                </label>
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-cave-rare-item-sound" />
+                  <span>Sound on rare item</span>
+                </label>
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-cave-rare-item-pause" />
+                  <span>Pause Cavebot</span>
+                </label>
+              </div>
               <div class="mb-small-note">This list belongs to the selected preset. An unlisted monster stops Cavebot and Auto Attack.</div>
               <div class="mb-actions mb-actions-inline-two">
                 <button type="button" class="mb-small-button" id="mage-tuntun-cave-record">Record Spot</button>
@@ -10270,23 +10716,32 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
                 <input type="checkbox" id="mage-tuntun-auto-attack-melee" />
                 <span>Melee Mode</span>
               </label>
-              <label class="mb-field" for="mage-tuntun-auto-attack-movement">
-                <span class="mb-field-label">Movement</span>
-                <select id="mage-tuntun-auto-attack-movement">
-                  <option value="auto">Default (melee setting)</option>
-                  <option value="kite">Kite (keep distance)</option>
-                </select>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-auto-attack-movement" />
+                <span>Kite (keep distance)</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-auto-attack-kite-retreat-route" />
+                <span>Kite toward previous route waypoint</span>
               </label>
               <div class="mb-field-grid">
                 <label class="mb-field" for="mage-tuntun-auto-attack-kite-min-distance">
-                  <span class="mb-field-label">Kite min distance</span>
+                  <span class="mb-field-label">Kite min distance (included)</span>
                   <input type="number" id="mage-tuntun-auto-attack-kite-min-distance" min="1" placeholder="3" />
                 </label>
                 <label class="mb-field" for="mage-tuntun-auto-attack-kite-max-distance">
-                  <span class="mb-field-label">Kite max distance</span>
+                  <span class="mb-field-label">Kite max distance (included)</span>
                   <input type="number" id="mage-tuntun-auto-attack-kite-max-distance" min="1" placeholder="5" />
                 </label>
               </div>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-auto-attack-ignore-summons" />
+                <span>Ignore summons</span>
+              </label>
+              <label class="mb-field" for="mage-tuntun-auto-attack-priority-monsters">
+                <span class="mb-field-label">Monster priority (comma separated)</span>
+                <input type="text" id="mage-tuntun-auto-attack-priority-monsters" placeholder="Dragon, Necromancer" />
+              </label>
               <label class="mb-field" for="mage-tuntun-auto-attack-ignore-monsters">
                 <span class="mb-field-label">Ignore monsters (comma separated)</span>
                 <input type="text" id="mage-tuntun-auto-attack-ignore-monsters" placeholder="Rat, Deer" />
@@ -10353,6 +10808,8 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     const autoHealManaHotkeyInput = panel.querySelector("#mage-tuntun-auto-heal-mana-hotkey");
     const autoHealHpCooldownInput = panel.querySelector("#mage-tuntun-auto-heal-hp-cooldown");
     const autoHealManaCooldownInput = panel.querySelector("#mage-tuntun-auto-heal-mana-cooldown");
+    const autoHealParalyzeEnabledInput = panel.querySelector("#mage-tuntun-auto-heal-paralyze-enabled");
+    const autoHealParalyzeHotkeyInput = panel.querySelector("#mage-tuntun-auto-heal-paralyze-hotkey");
     const autoSioEnabledInput = panel.querySelector("#mage-tuntun-auto-sio-enabled");
     const autoSioTargetInput = panel.querySelector("#mage-tuntun-auto-sio-target");
     const autoSioHpPercentInput = panel.querySelector("#mage-tuntun-auto-sio-hp-percent");
@@ -10361,8 +10818,11 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     const autoAttackEnabledInput = panel.querySelector("#mage-tuntun-auto-attack-enabled");
     const autoAttackMeleeInput = panel.querySelector("#mage-tuntun-auto-attack-melee");
     const autoAttackMovementInput = panel.querySelector("#mage-tuntun-auto-attack-movement");
+    const autoAttackKiteRetreatRouteInput = panel.querySelector("#mage-tuntun-auto-attack-kite-retreat-route");
     const autoAttackKiteMinDistanceInput = panel.querySelector("#mage-tuntun-auto-attack-kite-min-distance");
     const autoAttackKiteMaxDistanceInput = panel.querySelector("#mage-tuntun-auto-attack-kite-max-distance");
+    const autoAttackIgnoreSummonsInput = panel.querySelector("#mage-tuntun-auto-attack-ignore-summons");
+    const autoAttackPriorityMonstersInput = panel.querySelector("#mage-tuntun-auto-attack-priority-monsters");
     const autoAttackIgnoreMonstersInput = panel.querySelector("#mage-tuntun-auto-attack-ignore-monsters");
     const autoAttackHotkeyInput = panel.querySelector("#mage-tuntun-auto-attack-hotkey");
     const autoAttackRuneHotkeyInput = panel.querySelector("#mage-tuntun-auto-attack-rune-hotkey");
@@ -10409,6 +10869,10 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     const cavePresetDeleteButton = panel.querySelector("#mage-tuntun-cave-preset-delete");
     const caveUnexpectedMonsterAlertInput = panel.querySelector("#mage-tuntun-cave-unexpected-monster-alert");
     const caveAllowedMonstersInput = panel.querySelector("#mage-tuntun-cave-allowed-monsters");
+    const caveRareItemsInput = panel.querySelector("#mage-tuntun-cave-rare-items");
+    const caveRareItemRarityInput = panel.querySelector("#mage-tuntun-cave-rare-item-rarity");
+    const caveRareItemSoundInput = panel.querySelector("#mage-tuntun-cave-rare-item-sound");
+    const caveRareItemPauseInput = panel.querySelector("#mage-tuntun-cave-rare-item-pause");
 
     if (collapseButton) {
       collapseButton.addEventListener("click", () => {
@@ -10823,6 +11287,35 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (caveRareItemsInput) {
+      caveRareItemsInput.value = (bot.cave?.config?.rareItemNames || []).join(", ");
+      caveRareItemsInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemNames: caveRareItemsInput.value });
+        caveRareItemsInput.value = (bot.cave?.config?.rareItemNames || []).join(", ");
+      });
+    }
+
+    if (caveRareItemRarityInput) {
+      caveRareItemRarityInput.checked = bot.cave?.config?.rareItemDetectByRarity !== false;
+      caveRareItemRarityInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemDetectByRarity: caveRareItemRarityInput.checked });
+      });
+    }
+
+    if (caveRareItemSoundInput) {
+      caveRareItemSoundInput.checked = bot.cave?.config?.rareItemAlertEnabled !== false;
+      caveRareItemSoundInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemAlertEnabled: caveRareItemSoundInput.checked });
+      });
+    }
+
+    if (caveRareItemPauseInput) {
+      caveRareItemPauseInput.checked = bot.cave?.config?.rareItemPauseCavebot !== false;
+      caveRareItemPauseInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemPauseCavebot: caveRareItemPauseInput.checked });
+      });
+    }
+
     if (caveRecordButton) {
       caveRecordButton.addEventListener("click", () => {
         bot.cave.addWaypointCurrentSpot();
@@ -10971,6 +11464,37 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (autoHealParalyzeHotkeyInput) {
+      autoHealParalyzeHotkeyInput.value = bot.heal?.config?.paralyzeHotbarSlot
+        ? String(bot.heal.config.paralyzeHotbarSlot)
+        : "";
+      autoHealParalyzeHotkeyInput.addEventListener("change", () => {
+        const slot = Number(autoHealParalyzeHotkeyInput.value);
+        const paralyzeHotbarSlot = Number.isFinite(slot) && slot >= 1 && slot <= 12
+          ? Math.trunc(slot)
+          : null;
+        autoHealParalyzeHotkeyInput.value = paralyzeHotbarSlot ? String(paralyzeHotbarSlot) : "";
+        bot.heal.updateConfig({ paralyzeHotbarSlot });
+        if (autoHealParalyzeEnabledInput) {
+          autoHealParalyzeEnabledInput.checked = !!paralyzeHotbarSlot;
+        }
+      });
+    }
+
+    if (autoHealParalyzeEnabledInput) {
+      autoHealParalyzeEnabledInput.checked = !!bot.heal?.config?.paralyzeHotbarSlot;
+      autoHealParalyzeEnabledInput.addEventListener("change", () => {
+        const slot = Number(autoHealParalyzeHotkeyInput?.value);
+        const paralyzeHotbarSlot = autoHealParalyzeEnabledInput.checked && Number.isFinite(slot) && slot >= 1 && slot <= 12
+          ? Math.trunc(slot)
+          : null;
+        bot.heal.updateConfig({ paralyzeHotbarSlot });
+        if (!paralyzeHotbarSlot) {
+          autoHealParalyzeEnabledInput.checked = false;
+        }
+      });
+    }
+
     if (autoHealEnabledInput) {
       autoHealEnabledInput.checked = !!bot.heal?.status?.().running;
       autoHealEnabledInput.addEventListener("change", () => {
@@ -10986,9 +11510,13 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
           12,
           Math.max(1, Number(autoHealManaHotkeyInput?.value) || bot.heal.config.manaHotbarSlot || 4)
         );
+        const configuredParalyzeSlot = Number(autoHealParalyzeHotkeyInput?.value);
+        const paralyzeHotbarSlot = autoHealParalyzeEnabledInput?.checked && Number.isFinite(configuredParalyzeSlot) && configuredParalyzeSlot >= 1 && configuredParalyzeSlot <= 12
+          ? Math.trunc(configuredParalyzeSlot)
+          : null;
 
         if (autoHealEnabledInput.checked) {
-          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot, hpHealCooldownMs, manaHealCooldownMs });
+          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot, hpHealCooldownMs, manaHealCooldownMs, paralyzeHotbarSlot });
         } else {
           bot.heal.stop();
         }
@@ -11077,9 +11605,31 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     }
 
     if (autoAttackMovementInput) {
-      autoAttackMovementInput.value = bot.attack?.config?.combatMovement === "kite" ? "kite" : "auto";
+      autoAttackMovementInput.checked = bot.attack?.config?.combatMovement === "kite";
       autoAttackMovementInput.addEventListener("change", () => {
-        bot.attack.updateConfig({ combatMovement: autoAttackMovementInput.value });
+        bot.attack.updateConfig({ combatMovement: autoAttackMovementInput.checked ? "kite" : "auto" });
+      });
+    }
+
+    if (autoAttackKiteRetreatRouteInput) {
+      autoAttackKiteRetreatRouteInput.checked = bot.attack?.config?.kiteRetreatToRoute !== false;
+      autoAttackKiteRetreatRouteInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ kiteRetreatToRoute: autoAttackKiteRetreatRouteInput.checked });
+      });
+    }
+
+    if (autoAttackIgnoreSummonsInput) {
+      autoAttackIgnoreSummonsInput.checked = bot.attack?.config?.ignoreSummons !== false;
+      autoAttackIgnoreSummonsInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ ignoreSummons: autoAttackIgnoreSummonsInput.checked });
+      });
+    }
+
+    if (autoAttackPriorityMonstersInput) {
+      autoAttackPriorityMonstersInput.value = (bot.attack?.config?.priorityMonsterNames || []).join(", ");
+      autoAttackPriorityMonstersInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ priorityMonsterNames: autoAttackPriorityMonstersInput.value });
+        autoAttackPriorityMonstersInput.value = (bot.attack?.config?.priorityMonsterNames || []).join(", ");
       });
     }
 
@@ -11125,7 +11675,7 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
           return bot.attack.config.runeHotbarSlot ?? null;
         })();
         const meleeMode = !!autoAttackMeleeInput?.checked;
-        const combatMovement = autoAttackMovementInput?.value === "kite" ? "kite" : "auto";
+        const combatMovement = autoAttackMovementInput?.checked ? "kite" : "auto";
         const runeCooldownMs = Math.max(
           1000,
           Number(autoAttackRuneCooldownInput?.value) || bot.attack.config.runeCooldownMs || 2000

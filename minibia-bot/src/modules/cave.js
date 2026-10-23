@@ -17,6 +17,28 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     /\bgravel pile\b/i,
     /\bdirt pile\b/i,
   ];
+  const defaultRareItemNames = [
+    "Fire Sword",
+    "Magic Sword",
+    "Giant Sword",
+    "Stonecutter Axe",
+    "Thunder Hammer",
+    "Dragon Scale Mail",
+    "Golden Armor",
+    "Demon Armor",
+    "Crown Armor",
+    "Knight Armor",
+    "Royal Helmet",
+    "Warrior Helmet",
+    "Guardian Halberd",
+    "Dragon Lance",
+    "Dragon Shield",
+    "Vampire Shield",
+    "Crown Legs",
+    "Demon Shield",
+    "Tower Shield",
+    "Mastermind Shield",
+  ];
   const state = {
     running: false,
     timerId: null,
@@ -31,6 +53,7 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     lastCavePosition: null,
     pendingTransitionSource: null,
     pausedForCombat: false,
+    alertedRareItemKeys: new Set(),
   };
   const minimapOverlayState = {
     timerId: null,
@@ -45,11 +68,19 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
       unexpectedRelocationDistance: 10,
       enabled: false,
       unexpectedMonsterAlertEnabled: true,
+      rareItemNames: defaultRareItemNames,
+      rareItemDetectByRarity: true,
+      rareItemAlertEnabled: true,
+      rareItemPauseCavebot: true,
       activePresetName: defaultPresetName,
     },
     bot.storage.get(configStorageKey, {})
   );
   config.tickMs = 500;
+  config.rareItemNames = normalizeMonsterNames(config.rareItemNames);
+  config.rareItemDetectByRarity = config.rareItemDetectByRarity !== false;
+  config.rareItemAlertEnabled = config.rareItemAlertEnabled !== false;
+  config.rareItemPauseCavebot = config.rareItemPauseCavebot !== false;
 
   function normalizePresetName(value) {
     const normalized = String(value || "").trim().replace(/\s+/g, " ");
@@ -546,6 +577,12 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
   function getThingName(thing) {
     const definition = getThingDefinition(thing?.id);
     return String(definition?.properties?.name || thing?.name || "").trim().toLowerCase();
+  }
+
+  function getThingRarity(thing) {
+    const definition = getThingDefinition(thing?.id);
+    const rarity = Number(thing?.getDataObject?.()?.properties?.rarity ?? definition?.properties?.rarity);
+    return Number.isFinite(rarity) ? rarity : 0;
   }
 
   function isLadderThing(thing) {
@@ -1459,6 +1496,63 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     );
   }
 
+  function getVisibleRareItems(position) {
+    if (!config.rareItemNames.length || !position) {
+      return [];
+    }
+
+    const rareNames = new Set(config.rareItemNames.map((name) => name.toLowerCase()));
+    return getLoadedTiles().flatMap((tile) => {
+      const tilePosition = getTilePosition(tile);
+      if (!tilePosition || tilePosition.z !== position.z ||
+        Math.abs(tilePosition.x - position.x) > 8 || Math.abs(tilePosition.y - position.y) > 6) {
+        return [];
+      }
+
+      return getTileThings(tile)
+        .map((thing) => ({
+          name: getThingName(thing),
+          rarity: getThingRarity(thing),
+          position: tilePosition,
+        }))
+        .filter((item) => rareNames.has(item.name) || (config.rareItemDetectByRarity && item.rarity >= 2));
+    });
+  }
+
+  function stopForRareItems(items) {
+    if (!items.length) {
+      return false;
+    }
+
+    const newItems = items.filter((item) => {
+      const key = `${item.name}@${item.position.x},${item.position.y},${item.position.z}`;
+      if (state.alertedRareItemKeys.has(key)) {
+        return false;
+      }
+      state.alertedRareItemKeys.add(key);
+      return true;
+    });
+    if (!newItems.length) {
+      return false;
+    }
+
+    const names = Array.from(new Set(newItems.map((item) => item.name)));
+    if (config.rareItemAlertEnabled) {
+      bot.playAlarm?.();
+    }
+    bot.log("rare item detected", { items: newItems });
+
+    if (!config.rareItemPauseCavebot) {
+      return true;
+    }
+
+    const reason = `Rare item detected: ${names.join(", ")}`;
+    bot.setStopReason?.(reason, { items: newItems });
+    stop({ reason });
+    bot.ui?.refreshCaveStatus?.();
+    return true;
+  }
+
   function stopForUnexpectedMonsters(monsters) {
     if (!monsters.length) {
       return false;
@@ -1493,6 +1587,10 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
         return;
       }
       observePosition();
+
+      if (stopForRareItems(getVisibleRareItems(position))) {
+        return;
+      }
 
       if (stopForUnexpectedMonsters(getUnexpectedVisibleMonsters())) {
         return;
@@ -1613,6 +1711,7 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     state.lastCavePosition = position;
     state.lastProgressAt = Date.now();
     state.pausedForCombat = false;
+    state.alertedRareItemKeys.clear();
     bot.log("cave bot started", {
       waypoints: route.length,
       currentIndex: state.currentIndex + 1,
@@ -1774,8 +1873,24 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
   }
 
   function updateConfig(nextConfig = {}) {
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemNames")) {
+      nextConfig.rareItemNames = normalizeMonsterNames(nextConfig.rareItemNames);
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemAlertEnabled")) {
+      nextConfig.rareItemAlertEnabled = nextConfig.rareItemAlertEnabled !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemDetectByRarity")) {
+      nextConfig.rareItemDetectByRarity = nextConfig.rareItemDetectByRarity !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "rareItemPauseCavebot")) {
+      nextConfig.rareItemPauseCavebot = nextConfig.rareItemPauseCavebot !== false;
+    }
     Object.assign(config, nextConfig);
     config.tickMs = 500;
+    config.rareItemNames = normalizeMonsterNames(config.rareItemNames);
+    config.rareItemDetectByRarity = config.rareItemDetectByRarity !== false;
+    config.rareItemAlertEnabled = config.rareItemAlertEnabled !== false;
+    config.rareItemPauseCavebot = config.rareItemPauseCavebot !== false;
     persistConfig();
     bot.log("cave config updated", { ...config });
     return { ...config };
@@ -1803,6 +1918,7 @@ window.__mageTuntunBundle.installCaveModule = function installCaveModule(bot) {
     getPresetNames,
     getActivePresetName,
     getCurrentWaypoint,
+    getVisibleRareItems,
     createPreset,
     savePreset,
     loadPreset,

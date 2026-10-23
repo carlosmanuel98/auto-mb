@@ -8,6 +8,7 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     timerId: null,
     lastHpHealAt: 0,
     lastManaHealAt: 0,
+    lastParalyzeHealAt: 0,
     lastHpAttemptAt: 0,
     lastManaAttemptAt: 0,
     pendingHpAttempt: null,
@@ -27,6 +28,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
       minMana: 150,
       minManaPercent: 30,
       manaHotbarSlot: 4,
+      paralyzeHotbarSlot: null,
+      paralyzeCooldownMs: 1000,
       enabled: false,
     },
     bot.storage.get(configStorageKey, {})
@@ -35,6 +38,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
   config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 30));
   config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 1800);
   config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+  config.paralyzeHotbarSlot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+  config.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
 
   function persistConfig() {
     bot.storage.set(configStorageKey, { ...config });
@@ -73,6 +78,35 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
 
   function hasPendingAttempt() {
     return !!(state.pendingHpAttempt || state.pendingManaAttempt);
+  }
+
+  function isParalyzed() {
+    const player = window.gameClient?.player;
+    const conditionId = window.ConditionManager?.prototype?.PARALYZE ?? 16;
+    return !!(
+      player?.conditions?.has?.(conditionId) ||
+      player?.conditions?.__conditions?.has?.(conditionId) ||
+      player?.hasCondition?.(conditionId)
+    );
+  }
+
+  function canUseParalyzeHeal(now = Date.now()) {
+    const slot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    return !!slot && isParalyzed() && now - state.lastParalyzeHealAt >= config.paralyzeCooldownMs;
+  }
+
+  function triggerParalyzeHeal(now = Date.now()) {
+    if (!canUseParalyzeHeal(now)) {
+      return false;
+    }
+
+    const slot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    const clicked = bot.clickHotbar(slot - 1);
+    if (clicked) {
+      state.lastParalyzeHealAt = now;
+      bot.log("pressed paralyze heal hotkey", { slot });
+    }
+    return clicked;
   }
 
   function didHpHealSucceed(stats, attempt) {
@@ -202,6 +236,10 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
 
     resolvePendingAttempts(stats, now);
 
+    if (triggerParalyzeHeal(now)) {
+      return true;
+    }
+
     if (hasPendingAttempt()) {
       return false;
     }
@@ -242,6 +280,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     }
     config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 1800);
     config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    config.paralyzeHotbarSlot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    config.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
 
     if (state.running) {
@@ -279,6 +319,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
       stats: readStats(),
       lastHpHealAt: state.lastHpHealAt,
       lastManaHealAt: state.lastManaHealAt,
+      lastParalyzeHealAt: state.lastParalyzeHealAt,
+      paralyzed: isParalyzed(),
       lastHpAttemptAt: state.lastHpAttemptAt,
       lastManaAttemptAt: state.lastManaAttemptAt,
       pendingHpAttempt: state.pendingHpAttempt ? { ...state.pendingHpAttempt } : null,
@@ -293,6 +335,14 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "manaHotbarSlot")) {
       nextConfig.manaHotbarSlot = normalizeHotbarSlot(nextConfig.manaHotbarSlot) ?? config.manaHotbarSlot;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "paralyzeHotbarSlot")) {
+      nextConfig.paralyzeHotbarSlot = normalizeHotbarSlot(nextConfig.paralyzeHotbarSlot);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(nextConfig, "paralyzeCooldownMs")) {
+      nextConfig.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(nextConfig.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     }
 
     if (Object.prototype.hasOwnProperty.call(nextConfig, "minHp")) {
@@ -338,6 +388,8 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     config.minManaPercent = Math.min(100, Math.max(1, Number(config.minManaPercent) || 30));
     config.hpHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.hpHealCooldownMs) || 1800);
     config.manaHealCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.manaHealCooldownMs) || MIN_HEAL_COOLDOWN_MS);
+    config.paralyzeHotbarSlot = normalizeHotbarSlot(config.paralyzeHotbarSlot);
+    config.paralyzeCooldownMs = Math.max(MIN_HEAL_COOLDOWN_MS, Number(config.paralyzeCooldownMs) || MIN_HEAL_COOLDOWN_MS);
     persistConfig();
     bot.log("auto heal config updated", { ...config });
     return { ...config };
@@ -356,8 +408,11 @@ window.__mageTuntunBundle.installHealModule = function installHealModule(bot) {
     tryHeal,
     canUseHpHeal,
     canUseManaHeal,
+    canUseParalyzeHeal,
     triggerHpHeal,
     triggerManaHeal,
+    triggerParalyzeHeal,
+    isParalyzed,
     normalizeHotbarSlot,
     config,
   };

@@ -1182,7 +1182,7 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
               </label>
               <label class="mb-toggle">
                 <input type="checkbox" id="mage-tuntun-gm-ignore-pz" />
-                <span>Ignore GMs in protection zone (PZ)</span>
+                <span>Mute GM alarms in PZ (still pauses)</span>
               </label>
               <label class="mb-toggle">
                 <input type="checkbox" id="mage-tuntun-gm-react-name" />
@@ -1342,7 +1342,7 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
             </div>
           </div>
           <div class="mb-section mb-column-section">
-            <div class="mb-note">Loaded routines: Panic Runner, magic level trainer, auto eat, auto haste, auto invisible, auto utamo vita, equip ring, auto heal, auto attack, and talk.</div>
+            <div class="mb-note">Loaded routines: Panic Runner, magic level trainer, auto eat, auto haste, auto invisible, auto utamo vita, equip ring, auto heal, and auto attack.</div>
           </div>
         </div>
         <div class="mb-side-column">
@@ -1393,21 +1393,17 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
                   <input type="number" id="mage-tuntun-auto-heal-mana-cooldown" min="1000" placeholder="1000" />
                 </label>
               </div>
+              <div class="mb-row">
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-auto-heal-paralyze-enabled" />
+                  <span>Remove Paralyze</span>
+                </label>
+                <label class="mb-field mb-field-compact" for="mage-tuntun-auto-heal-paralyze-hotkey">
+                  <span class="mb-field-label">Paralyze Hotkey (1-12)</span>
+                  <input type="number" id="mage-tuntun-auto-heal-paralyze-hotkey" min="1" max="12" placeholder="" />
+                </label>
+              </div>
               <div class="mb-small-note">Checks about twenty times per second. HP is used before mana; each hotkey has its own spell cooldown.</div>
-            </div>
-          </div>
-          <div class="mb-section mb-column-section">
-            <div class="mb-label">Auto Responder / Chat</div>
-            <div class="mb-stack">
-              <label class="mb-toggle">
-                <input type="checkbox" id="mage-tuntun-talk-enabled" />
-                <span>Activar Auto Responder</span>
-              </label>
-              <input type="password" id="mage-tuntun-talk-api-key" placeholder="Gemini API key (opcional para IA)" />
-              <textarea id="mage-tuntun-talk-prompt" placeholder="Instrucciones de respuesta (prompt estilo jugador)..."></textarea>
-              <div class="mb-small-note" id="mage-tuntun-talk-status">Estado: inactivo</div>
-              <div class="mb-small-note">Responde en Default a jugadores cercanos en el spawn.</div>
-              <div class="mb-small-note">Sin API key usa respuestas rápidas de jugador. Nunca admite ser bot.</div>
             </div>
           </div>
           <div class="mb-section mb-column-section">
@@ -1454,6 +1450,24 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
                 <span class="mb-field-label">Allowed monsters (comma separated)</span>
                 <input type="text" id="mage-tuntun-cave-allowed-monsters" placeholder="Cyclops, Cyclops Drone" />
               </label>
+              <label class="mb-field" for="mage-tuntun-cave-rare-items">
+                <span class="mb-field-label">Rare item alert (comma separated)</span>
+                <input type="text" id="mage-tuntun-cave-rare-items" placeholder="Fire Sword, Dragon Scale Mail, Golden Armor" />
+              </label>
+              <div class="mb-row">
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-cave-rare-item-rarity" />
+                  <span>Detect rare+ automatically</span>
+                </label>
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-cave-rare-item-sound" />
+                  <span>Sound on rare item</span>
+                </label>
+                <label class="mb-toggle">
+                  <input type="checkbox" id="mage-tuntun-cave-rare-item-pause" />
+                  <span>Pause Cavebot</span>
+                </label>
+              </div>
               <div class="mb-small-note">This list belongs to the selected preset. An unlisted monster stops Cavebot and Auto Attack.</div>
               <div class="mb-actions mb-actions-inline-two">
                 <button type="button" class="mb-small-button" id="mage-tuntun-cave-record">Record Spot</button>
@@ -1481,23 +1495,32 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
                 <input type="checkbox" id="mage-tuntun-auto-attack-melee" />
                 <span>Melee Mode</span>
               </label>
-              <label class="mb-field" for="mage-tuntun-auto-attack-movement">
-                <span class="mb-field-label">Movement</span>
-                <select id="mage-tuntun-auto-attack-movement">
-                  <option value="auto">Default (melee setting)</option>
-                  <option value="kite">Kite (keep distance)</option>
-                </select>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-auto-attack-movement" />
+                <span>Kite (keep distance)</span>
+              </label>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-auto-attack-kite-retreat-route" />
+                <span>Kite toward previous route waypoint</span>
               </label>
               <div class="mb-field-grid">
                 <label class="mb-field" for="mage-tuntun-auto-attack-kite-min-distance">
-                  <span class="mb-field-label">Kite min distance</span>
+                  <span class="mb-field-label">Kite min distance (included)</span>
                   <input type="number" id="mage-tuntun-auto-attack-kite-min-distance" min="1" placeholder="3" />
                 </label>
                 <label class="mb-field" for="mage-tuntun-auto-attack-kite-max-distance">
-                  <span class="mb-field-label">Kite max distance</span>
+                  <span class="mb-field-label">Kite max distance (included)</span>
                   <input type="number" id="mage-tuntun-auto-attack-kite-max-distance" min="1" placeholder="5" />
                 </label>
               </div>
+              <label class="mb-toggle">
+                <input type="checkbox" id="mage-tuntun-auto-attack-ignore-summons" />
+                <span>Ignore summons</span>
+              </label>
+              <label class="mb-field" for="mage-tuntun-auto-attack-priority-monsters">
+                <span class="mb-field-label">Monster priority (comma separated)</span>
+                <input type="text" id="mage-tuntun-auto-attack-priority-monsters" placeholder="Dragon, Necromancer" />
+              </label>
               <label class="mb-field" for="mage-tuntun-auto-attack-ignore-monsters">
                 <span class="mb-field-label">Ignore monsters (comma separated)</span>
                 <input type="text" id="mage-tuntun-auto-attack-ignore-monsters" placeholder="Rat, Deer" />
@@ -1564,6 +1587,8 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     const autoHealManaHotkeyInput = panel.querySelector("#mage-tuntun-auto-heal-mana-hotkey");
     const autoHealHpCooldownInput = panel.querySelector("#mage-tuntun-auto-heal-hp-cooldown");
     const autoHealManaCooldownInput = panel.querySelector("#mage-tuntun-auto-heal-mana-cooldown");
+    const autoHealParalyzeEnabledInput = panel.querySelector("#mage-tuntun-auto-heal-paralyze-enabled");
+    const autoHealParalyzeHotkeyInput = panel.querySelector("#mage-tuntun-auto-heal-paralyze-hotkey");
     const autoSioEnabledInput = panel.querySelector("#mage-tuntun-auto-sio-enabled");
     const autoSioTargetInput = panel.querySelector("#mage-tuntun-auto-sio-target");
     const autoSioHpPercentInput = panel.querySelector("#mage-tuntun-auto-sio-hp-percent");
@@ -1572,8 +1597,11 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     const autoAttackEnabledInput = panel.querySelector("#mage-tuntun-auto-attack-enabled");
     const autoAttackMeleeInput = panel.querySelector("#mage-tuntun-auto-attack-melee");
     const autoAttackMovementInput = panel.querySelector("#mage-tuntun-auto-attack-movement");
+    const autoAttackKiteRetreatRouteInput = panel.querySelector("#mage-tuntun-auto-attack-kite-retreat-route");
     const autoAttackKiteMinDistanceInput = panel.querySelector("#mage-tuntun-auto-attack-kite-min-distance");
     const autoAttackKiteMaxDistanceInput = panel.querySelector("#mage-tuntun-auto-attack-kite-max-distance");
+    const autoAttackIgnoreSummonsInput = panel.querySelector("#mage-tuntun-auto-attack-ignore-summons");
+    const autoAttackPriorityMonstersInput = panel.querySelector("#mage-tuntun-auto-attack-priority-monsters");
     const autoAttackIgnoreMonstersInput = panel.querySelector("#mage-tuntun-auto-attack-ignore-monsters");
     const autoAttackHotkeyInput = panel.querySelector("#mage-tuntun-auto-attack-hotkey");
     const autoAttackRuneHotkeyInput = panel.querySelector("#mage-tuntun-auto-attack-rune-hotkey");
@@ -1620,6 +1648,10 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     const cavePresetDeleteButton = panel.querySelector("#mage-tuntun-cave-preset-delete");
     const caveUnexpectedMonsterAlertInput = panel.querySelector("#mage-tuntun-cave-unexpected-monster-alert");
     const caveAllowedMonstersInput = panel.querySelector("#mage-tuntun-cave-allowed-monsters");
+    const caveRareItemsInput = panel.querySelector("#mage-tuntun-cave-rare-items");
+    const caveRareItemRarityInput = panel.querySelector("#mage-tuntun-cave-rare-item-rarity");
+    const caveRareItemSoundInput = panel.querySelector("#mage-tuntun-cave-rare-item-sound");
+    const caveRareItemPauseInput = panel.querySelector("#mage-tuntun-cave-rare-item-pause");
 
     if (collapseButton) {
       collapseButton.addEventListener("click", () => {
@@ -2034,6 +2066,35 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (caveRareItemsInput) {
+      caveRareItemsInput.value = (bot.cave?.config?.rareItemNames || []).join(", ");
+      caveRareItemsInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemNames: caveRareItemsInput.value });
+        caveRareItemsInput.value = (bot.cave?.config?.rareItemNames || []).join(", ");
+      });
+    }
+
+    if (caveRareItemRarityInput) {
+      caveRareItemRarityInput.checked = bot.cave?.config?.rareItemDetectByRarity !== false;
+      caveRareItemRarityInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemDetectByRarity: caveRareItemRarityInput.checked });
+      });
+    }
+
+    if (caveRareItemSoundInput) {
+      caveRareItemSoundInput.checked = bot.cave?.config?.rareItemAlertEnabled !== false;
+      caveRareItemSoundInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemAlertEnabled: caveRareItemSoundInput.checked });
+      });
+    }
+
+    if (caveRareItemPauseInput) {
+      caveRareItemPauseInput.checked = bot.cave?.config?.rareItemPauseCavebot !== false;
+      caveRareItemPauseInput.addEventListener("change", () => {
+        bot.cave.updateConfig({ rareItemPauseCavebot: caveRareItemPauseInput.checked });
+      });
+    }
+
     if (caveRecordButton) {
       caveRecordButton.addEventListener("click", () => {
         bot.cave.addWaypointCurrentSpot();
@@ -2182,6 +2243,37 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
       });
     }
 
+    if (autoHealParalyzeHotkeyInput) {
+      autoHealParalyzeHotkeyInput.value = bot.heal?.config?.paralyzeHotbarSlot
+        ? String(bot.heal.config.paralyzeHotbarSlot)
+        : "";
+      autoHealParalyzeHotkeyInput.addEventListener("change", () => {
+        const slot = Number(autoHealParalyzeHotkeyInput.value);
+        const paralyzeHotbarSlot = Number.isFinite(slot) && slot >= 1 && slot <= 12
+          ? Math.trunc(slot)
+          : null;
+        autoHealParalyzeHotkeyInput.value = paralyzeHotbarSlot ? String(paralyzeHotbarSlot) : "";
+        bot.heal.updateConfig({ paralyzeHotbarSlot });
+        if (autoHealParalyzeEnabledInput) {
+          autoHealParalyzeEnabledInput.checked = !!paralyzeHotbarSlot;
+        }
+      });
+    }
+
+    if (autoHealParalyzeEnabledInput) {
+      autoHealParalyzeEnabledInput.checked = !!bot.heal?.config?.paralyzeHotbarSlot;
+      autoHealParalyzeEnabledInput.addEventListener("change", () => {
+        const slot = Number(autoHealParalyzeHotkeyInput?.value);
+        const paralyzeHotbarSlot = autoHealParalyzeEnabledInput.checked && Number.isFinite(slot) && slot >= 1 && slot <= 12
+          ? Math.trunc(slot)
+          : null;
+        bot.heal.updateConfig({ paralyzeHotbarSlot });
+        if (!paralyzeHotbarSlot) {
+          autoHealParalyzeEnabledInput.checked = false;
+        }
+      });
+    }
+
     if (autoHealEnabledInput) {
       autoHealEnabledInput.checked = !!bot.heal?.status?.().running;
       autoHealEnabledInput.addEventListener("change", () => {
@@ -2197,9 +2289,13 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
           12,
           Math.max(1, Number(autoHealManaHotkeyInput?.value) || bot.heal.config.manaHotbarSlot || 4)
         );
+        const configuredParalyzeSlot = Number(autoHealParalyzeHotkeyInput?.value);
+        const paralyzeHotbarSlot = autoHealParalyzeEnabledInput?.checked && Number.isFinite(configuredParalyzeSlot) && configuredParalyzeSlot >= 1 && configuredParalyzeSlot <= 12
+          ? Math.trunc(configuredParalyzeSlot)
+          : null;
 
         if (autoHealEnabledInput.checked) {
-          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot, hpHealCooldownMs, manaHealCooldownMs });
+          bot.heal.start({ minHpPercent, hpHotbarSlot, minManaPercent, manaHotbarSlot, hpHealCooldownMs, manaHealCooldownMs, paralyzeHotbarSlot });
         } else {
           bot.heal.stop();
         }
@@ -2288,9 +2384,31 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
     }
 
     if (autoAttackMovementInput) {
-      autoAttackMovementInput.value = bot.attack?.config?.combatMovement === "kite" ? "kite" : "auto";
+      autoAttackMovementInput.checked = bot.attack?.config?.combatMovement === "kite";
       autoAttackMovementInput.addEventListener("change", () => {
-        bot.attack.updateConfig({ combatMovement: autoAttackMovementInput.value });
+        bot.attack.updateConfig({ combatMovement: autoAttackMovementInput.checked ? "kite" : "auto" });
+      });
+    }
+
+    if (autoAttackKiteRetreatRouteInput) {
+      autoAttackKiteRetreatRouteInput.checked = bot.attack?.config?.kiteRetreatToRoute !== false;
+      autoAttackKiteRetreatRouteInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ kiteRetreatToRoute: autoAttackKiteRetreatRouteInput.checked });
+      });
+    }
+
+    if (autoAttackIgnoreSummonsInput) {
+      autoAttackIgnoreSummonsInput.checked = bot.attack?.config?.ignoreSummons !== false;
+      autoAttackIgnoreSummonsInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ ignoreSummons: autoAttackIgnoreSummonsInput.checked });
+      });
+    }
+
+    if (autoAttackPriorityMonstersInput) {
+      autoAttackPriorityMonstersInput.value = (bot.attack?.config?.priorityMonsterNames || []).join(", ");
+      autoAttackPriorityMonstersInput.addEventListener("change", () => {
+        bot.attack.updateConfig({ priorityMonsterNames: autoAttackPriorityMonstersInput.value });
+        autoAttackPriorityMonstersInput.value = (bot.attack?.config?.priorityMonsterNames || []).join(", ");
       });
     }
 
@@ -2336,7 +2454,7 @@ window.__mageTuntunBundle.installPanel = function installPanel(bot) {
           return bot.attack.config.runeHotbarSlot ?? null;
         })();
         const meleeMode = !!autoAttackMeleeInput?.checked;
-        const combatMovement = autoAttackMovementInput?.value === "kite" ? "kite" : "auto";
+        const combatMovement = autoAttackMovementInput?.checked ? "kite" : "auto";
         const runeCooldownMs = Math.max(
           1000,
           Number(autoAttackRuneCooldownInput?.value) || bot.attack.config.runeCooldownMs || 2000

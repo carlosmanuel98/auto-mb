@@ -175,6 +175,20 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
     );
   }
 
+  function isPlayerInProtectionZone() {
+    if (!config.ignoreGmInPz) {
+      return false;
+    }
+
+    const player = window.gameClient?.player;
+    const pzConditionId = window.ConditionManager?.prototype?.PROTECTION_ZONE ?? 5;
+    if (player?.conditions?.has?.(pzConditionId) || player?.hasCondition?.(pzConditionId)) {
+      return true;
+    }
+
+    return !!bot.pz?.isPositionInPz?.(bot.getPlayerPosition?.());
+  }
+
   function isCreatureVisuallyVisible(creature, me) {
     if (!creature?.__position || creature.__position.z !== me?.z) {
       return false;
@@ -216,12 +230,6 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
 
       if (!isCreatureVisuallyVisible(creature, me)) {
         return false;
-      }
-
-      if (config.ignoreGmInPz && bot.pz?.isPositionInPz) {
-        if (bot.pz.isPositionInPz(creature.__position)) {
-          return false;
-        }
       }
 
       return true;
@@ -299,7 +307,7 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
         state.gmSeenHistory.set(primaryName, now);
         bot.log("gm detected on screen", { staff: staffNames });
 
-        if (config.soundOnGm) {
+        if (config.soundOnGm && !isPlayerInProtectionZone()) {
           bot.playAlarm?.();
         }
 
@@ -405,7 +413,7 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
       if (config.pauseHuntingOnGm) {
         pauseAutomations(`GM message from ${msg.sender}`);
       }
-      if (config.soundOnGm) {
+      if (config.soundOnGm && !isPlayerInProtectionZone()) {
         bot.playAlarm?.();
       }
       queueRandomReplies(`GM chat: ${msg.sender}`, staffName);
@@ -452,7 +460,7 @@ window.__mageTuntunBundle.installGmModule = function installGmModule(bot) {
       if (bodyNorm.includes(selfName)) {
         bot.log("character name mentioned in chat", { sender: msg.sender, message: msg.message });
 
-        if (config.soundOnName) {
+        if (config.soundOnName && !isPlayerInProtectionZone()) {
           bot.playAlarm?.();
         }
 
